@@ -1,0 +1,31 @@
+{
+    "name": "surfmonkey",
+    "version": "1.0.0",
+    "description": "Userscript project",
+    "main": "dist/index.user.js",
+    "scripts": {
+        "build": "tsx scripts/build-userscripts.ts",
+        "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+        "format": "biome format --write src scripts",
+        "format:check": "biome format src scripts",
+        "lint": "biome check src scripts"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "packageManager": "pnpm@10.27.0",
+    "dependencies": {
+        "esbuild": "^0.27.3",
+        "fast-glob": "^3.3.3",
+        "fflate": "^0.8.2",
+        "file-saver": "^2.0.5",
+        "yaml": "^2.8.2"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.4.3",
+        "@types/file-saver": "^2.0.7",
+        "@types/node": "^25.3.0",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3"
+    }
+}

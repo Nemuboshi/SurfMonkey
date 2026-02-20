@@ -1,0 +1,9 @@
+name: PageStitcher
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 6.0.0
+description: Assist page capture and batch export as PNG ZIP archives.
+match:
+  - https://www.cmoa.jp/bib/*
+  - https://yomiho.cmoa.jp/bib/*
+grant:
+  - none

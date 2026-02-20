@@ -1,0 +1,10 @@
+name: "HarborMate FancyIndex Bridge"
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.1.0
+description: Smart Nginx FancyIndex helper to copy auth links and push tasks to aria2.
+match:
+  - "*://*/*"
+grant:
+  - GM_getValue
+  - GM_setValue
+  - GM_setClipboard
