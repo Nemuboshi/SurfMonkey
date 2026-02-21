@@ -30,6 +30,11 @@ pnpm build
 A page-capture helper with a lightweight in-page control panel.  
 It captures visible page slices, stitches them into full PNG pages, and exports ZIP batches for download.
 
+### `MosaiComAnti`
+
+A compact in-page helper focused on range-based processing.  
+It performs stream-oriented page reconstruction and supports streaming mosaic packaging for selected segments.
+
 ### `harborMateAria2`
 
 A FancyIndex companion tool for file operations in listing pages.  

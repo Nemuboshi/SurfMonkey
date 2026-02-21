@@ -1,0 +1,8 @@
+name: MosaiComAnti
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: …
+match:
+  - https://www.cmoa.jp/bib/speedreader/*
+grant:
+  - GM_xmlhttpRequest
