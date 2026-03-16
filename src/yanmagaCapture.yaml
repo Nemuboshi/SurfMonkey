@@ -1,0 +1,9 @@
+name: Yanmaga Capture
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Capture stitched Yanmaga pages and download them as a ZIP archive.
+match:
+  - https://yanmaga.jp/viewer/*
+grant:
+  - none
+run-at: document-idle

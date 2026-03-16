@@ -49,7 +49,18 @@ async function main(): Promise<void> {
   const _srcDir = path.join(cwd, "src");
   const distDir = path.join(cwd, "dist");
 
-  const tsFiles = await fg("src/**/*.ts", { cwd, onlyFiles: true, dot: false });
+  const allTsFiles = await fg("src/**/*.ts", { cwd, onlyFiles: true, dot: false });
+  const tsFiles: string[] = [];
+
+  for (const tsRel of allTsFiles) {
+    const parsed = path.parse(tsRel);
+    const yamlRel = path.join(parsed.dir, `${parsed.name}.yaml`);
+    try {
+      await fs.access(path.join(cwd, yamlRel));
+      tsFiles.push(tsRel);
+    } catch {}
+  }
+
   if (tsFiles.length === 0) {
     console.log("No TypeScript entry files found in src/. Nothing to build.");
     return;
@@ -67,12 +78,7 @@ async function main(): Promise<void> {
       const yamlRel = path.join(parsed.dir, `${parsed.name}.yaml`);
       const yamlAbs = path.join(cwd, yamlRel);
 
-      let yamlRaw: string;
-      try {
-        yamlRaw = await fs.readFile(yamlAbs, "utf8");
-      } catch {
-        throw new Error(`Missing metadata file: ${yamlRel}`);
-      }
+      const yamlRaw = await fs.readFile(yamlAbs, "utf8");
 
       const parsedYaml = parseYaml(yamlRaw);
       if (!parsedYaml || typeof parsedYaml !== "object" || Array.isArray(parsedYaml)) {

@@ -1,0 +1,9 @@
+name: MosaiComAntiLite
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Lightweight BinB page capture for CMOA speedreader pages.
+match:
+  - https://www.cmoa.jp/bib/speedreader/*
+grant:
+  - none
+run-at: document-idle

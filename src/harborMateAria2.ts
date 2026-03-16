@@ -28,9 +28,28 @@ type Aria2ErrorResponse = {
   result?: unknown;
 };
 
+type GMXhrDetails = {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  data?: string;
+  responseType?: "text";
+  timeout?: number;
+  onload?: (response: GMXhrResponse) => void;
+  onerror?: (error: unknown) => void;
+  ontimeout?: () => void;
+};
+
+type GMXhrResponse = {
+  status: number;
+  responseText?: string;
+  response?: string;
+};
+
 declare function GM_getValue<T>(key: string, defaultValue: T): T;
 declare function GM_setValue<T>(key: string, value: T): void;
 declare function GM_setClipboard(data: string, type?: string): void;
+declare const GM_xmlhttpRequest: ((details: GMXhrDetails) => void) | undefined;
 
 (() => {
   const DEFAULTS: Config = {
@@ -44,6 +63,7 @@ declare function GM_setClipboard(data: string, type?: string): void;
     maxRecursiveFiles: 5000,
     rpcConcurrency: 8,
   };
+  const REQUEST_TIMEOUT_MS = 30000;
 
   const KEYS = Object.keys(DEFAULTS) as Array<keyof Config>;
 
@@ -268,17 +288,30 @@ declare function GM_setClipboard(data: string, type?: string): void;
       params,
     };
 
-    const resp = await fetch(config.aria2RpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    if (typeof GM_xmlhttpRequest !== "function") {
+      throw new Error("GM_xmlhttpRequest unavailable");
+    }
+
+    const response = await new Promise<GMXhrResponse>((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: config.aria2RpcUrl,
+        headers: { "Content-Type": "application/json" },
+        data: JSON.stringify(body),
+        responseType: "text",
+        timeout: REQUEST_TIMEOUT_MS,
+        onload: (res) => resolve(res),
+        onerror: (error) => reject(error),
+        ontimeout: () => reject(new Error("timeout")),
+      });
     });
 
-    if (!resp.ok) {
+    if (!(response.status >= 200 && response.status < 300)) {
       throw new Error("aria2 RPC request failed");
     }
 
-    const json = (await resp.json()) as Aria2ErrorResponse;
+    const payload = response.responseText ?? String(response.response ?? "");
+    const json = JSON.parse(payload) as Aria2ErrorResponse;
     if (json.error) {
       throw new Error(json.error.message || "aria2 RPC error");
     }

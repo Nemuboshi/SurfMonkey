@@ -7,6 +7,8 @@
 // @grant GM_getValue
 // @grant GM_setValue
 // @grant GM_setClipboard
+// @grant GM_xmlhttpRequest
+// @connect *
 // ==/UserScript==
 
 "use strict";
@@ -24,6 +26,7 @@
       maxRecursiveFiles: 5e3,
       rpcConcurrency: 8
     };
+    const REQUEST_TIMEOUT_MS = 3e4;
     const KEYS = Object.keys(DEFAULTS);
     function isLightTheme() {
       return document.body.classList.contains("theme-light");
@@ -201,21 +204,34 @@
       return false;
     }
     async function aria2Call(method, params) {
+      var _a, _b;
       const body = {
         jsonrpc: "2.0",
         id: String(Date.now()),
         method,
         params
       };
-      const resp = await fetch(config.aria2RpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+      if (typeof GM_xmlhttpRequest !== "function") {
+        throw new Error("GM_xmlhttpRequest unavailable");
+      }
+      const response = await new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: "POST",
+          url: config.aria2RpcUrl,
+          headers: { "Content-Type": "application/json" },
+          data: JSON.stringify(body),
+          responseType: "text",
+          timeout: REQUEST_TIMEOUT_MS,
+          onload: (res) => resolve(res),
+          onerror: (error) => reject(error),
+          ontimeout: () => reject(new Error("timeout"))
+        });
       });
-      if (!resp.ok) {
+      if (!(response.status >= 200 && response.status < 300)) {
         throw new Error("aria2 RPC request failed");
       }
-      const json = await resp.json();
+      const payload = (_b = response.responseText) != null ? _b : String((_a = response.response) != null ? _a : "");
+      const json = JSON.parse(payload);
       if (json.error) {
         throw new Error(json.error.message || "aria2 RPC error");
       }

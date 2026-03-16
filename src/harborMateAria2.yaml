@@ -8,3 +8,6 @@ grant:
   - GM_getValue
   - GM_setValue
   - GM_setClipboard
+  - GM_xmlhttpRequest
+connect:
+  - "*"
