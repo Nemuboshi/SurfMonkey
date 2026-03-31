@@ -1,0 +1,12 @@
+name: MangaParkLite
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Lightweight chapter capture for Manga Park Minobi reader pages.
+match:
+  - https://manga-park.com/title/*
+  - https://manga-park.com/title/*/*
+  - https://www.manga-park.com/title/*
+  - https://www.manga-park.com/title/*/*
+grant:
+  - none
+run-at: document-idle

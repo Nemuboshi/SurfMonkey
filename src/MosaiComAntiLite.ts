@@ -72,6 +72,9 @@ const ZIP_MIME = "application/zip";
 const IMAGE_MIME = "image/png";
 const IMAGE_EXT = "png";
 const WAIT_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 30000;
+const CAPTURE_CONCURRENCY = 4;
+const RETRY_DELAYS_MS = [300, 800];
 
 function log(...args: unknown[]): void {
   console.log("[MosaiComAntiLite]", ...args);
@@ -122,7 +125,95 @@ function getSourcePage(page: number): SpeedBinbPage {
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = globalThis.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(new Error(`${label} timeout (${timeoutMs}ms)`));
+    }, timeoutMs);
+
+    void promise
+      .then((value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        globalThis.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+type RetryAsyncOptions = {
+  delaysMs: number[];
+  shouldRetry: (error: unknown) => boolean;
+  onRetry?: (attempt: number, error: unknown) => void | Promise<void>;
+};
+
+export async function retryAsync<T>(
+  operation: () => Promise<T>,
+  options: RetryAsyncOptions,
+): Promise<T> {
+  const delays = options.delaysMs;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= delays.length || !options.shouldRetry(error)) {
+        throw error;
+      }
+      await options.onRetry?.(attempt + 1, error);
+      await delay(delays[attempt]);
+    }
+  }
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+  const out = new Array<R>(items.length);
+  const limit = Math.max(1, Number.isFinite(concurrency) ? Math.floor(concurrency) : 1);
+  let cursor = 0;
+  const run = async (): Promise<void> => {
+    while (true) {
+      const idx = cursor;
+      cursor += 1;
+      if (idx >= items.length) {
+        return;
+      }
+      out[idx] = await worker(items[idx], idx);
+    }
+  };
+  const runners: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(limit, items.length); i += 1) {
+    runners.push(run());
+  }
+  await Promise.all(runners);
+  return out;
 }
 
 async function waitFor<T>(label: string, factory: () => T | null | undefined): Promise<T> {
@@ -138,13 +229,21 @@ async function waitFor<T>(label: string, factory: () => T | null | undefined): P
 }
 
 async function loadSourceImage(src: string): Promise<HTMLImageElement> {
-  return await new Promise((resolve, reject) => {
-    const img = new Image();
+  const img = new Image();
+  const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load source image: ${src}`));
     img.src = src;
   });
+  try {
+    return await withTimeout(loadPromise, REQUEST_TIMEOUT_MS, "image load");
+  } catch (error) {
+    img.onload = null;
+    img.onerror = null;
+    img.src = "";
+    throw error;
+  }
 }
 
 async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -202,6 +301,21 @@ async function capturePage(page: number): Promise<CaptureResult> {
     fileName: `${String(page).padStart(4, "0")}.${IMAGE_EXT}`,
     blob: await canvasToBlob(canvas),
   };
+}
+
+function shouldRetryCapture(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /timeout|network|Failed to load source image/i.test(message);
+}
+
+async function capturePageWithRetry(page: number): Promise<CaptureResult> {
+  return await retryAsync(() => capturePage(page), {
+    delaysMs: RETRY_DELAYS_MS,
+    shouldRetry: shouldRetryCapture,
+    onRetry: (attempt, error) => {
+      log(`retry page ${page} attempt ${attempt}`, error);
+    },
+  });
 }
 
 async function zipFilesAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
@@ -297,14 +411,18 @@ async function captureRange(options: CaptureRangeOptions): Promise<CaptureSummar
   const to = Math.max(1, Math.min(Math.max(options.from, options.to), endPage));
   const downloadZip = options.downloadZip ?? true;
   const total = to - from + 1;
-  const results: CaptureResult[] = [];
+  const pages = Array.from({ length: total }, (_unused, idx) => from + idx);
+  let completed = 0;
 
   options.onProgress?.(formatCaptureProgress(0, total));
-  for (let page = from; page <= to; page += 1) {
-    results.push(await capturePage(page));
-    options.onProgress?.(formatCaptureProgress(results.length, total));
+  const results = await mapWithConcurrency(pages, CAPTURE_CONCURRENCY, async (page) => {
+    const result = await capturePageWithRetry(page);
+    completed += 1;
+    options.onProgress?.(formatCaptureProgress(completed, total));
     await delay(50);
-  }
+    return result;
+  });
+  results.sort((a, b) => a.page - b.page);
 
   const summary: CaptureSummary = {
     from,

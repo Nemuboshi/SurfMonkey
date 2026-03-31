@@ -1,9 +1,12 @@
 // ==UserScript==
-// @name MosaiComAntiLite
+// @name MangaParkLite
 // @namespace github.com/Nemuboshi/SurfMonkey
 // @version 1.0.0
-// @description Lightweight BinB page capture for CMOA speedreader pages.
-// @match https://www.cmoa.jp/bib/speedreader/*
+// @description Lightweight chapter capture for Manga Park Minobi reader pages.
+// @match https://manga-park.com/title/*
+// @match https://manga-park.com/title/*/*
+// @match https://www.manga-park.com/title/*
+// @match https://www.manga-park.com/title/*/*
 // @grant none
 // @run-at document-idle
 // ==/UserScript==
@@ -858,35 +861,95 @@
     fn();
   };
 
-  // src/binbRuntime.ts
-  function resolveBinbSourceUrl(content, image) {
-    return content.getImageUrl(image.src);
-  }
-  function resolveBinbDescramble(content, image, sourceDimensions) {
-    var _a2, _b2;
-    const width = (_a2 = sourceDimensions == null ? void 0 : sourceDimensions.width) != null ? _a2 : image.orgwidth;
-    const height = (_b2 = sourceDimensions == null ? void 0 : sourceDimensions.height) != null ? _b2 : image.orgheight;
-    try {
-      const descramble = content.getImageDescrambleCoords(image, width, height);
-      if (descramble) {
-        return descramble;
-      }
-    } catch (e) {
-    }
-    return content.getImageDescrambleCoords(image.src, width, height);
-  }
-
-  // src/MosaiComAntiLite.ts
-  var PANEL_ID = "__mosaicom_anti_lite_panel";
+  // src/MangaParkLite.ts
+  var PANEL_ID = "__manga_park_lite_panel";
   var ZIP_MIME = "application/zip";
-  var IMAGE_MIME = "image/png";
-  var IMAGE_EXT = "png";
-  var WAIT_TIMEOUT_MS = 3e4;
   var REQUEST_TIMEOUT_MS = 3e4;
-  var CAPTURE_CONCURRENCY = 4;
   var RETRY_DELAYS_MS = [300, 800];
+  var CAPTURE_CONCURRENCY = 4;
+  var INTENT_WINDOW_MS = 15e3;
+  var chapterSession = { mode: "idle" };
+  var chapterIntent = null;
+  var panelRefs = null;
+  var chapterPagesCache = /* @__PURE__ */ new Map();
+  var nativeFetchRef = null;
+  var activatingChapterIds = /* @__PURE__ */ new Set();
+  var chapterTitleHints = /* @__PURE__ */ new Map();
   function log(...args) {
-    console.log("[MosaiComAntiLite]", ...args);
+    console.log("[MangaParkLite]", ...args);
+  }
+  function delay(ms) {
+    return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+  }
+  function parseChapterIdFromPath(pathname) {
+    var _a2;
+    const match = pathname.match(/^\/title\/\d+\/(\d+)\/?$/);
+    return (_a2 = match == null ? void 0 : match[1]) != null ? _a2 : null;
+  }
+  function parseChapterIdFromApiUrl(urlLike) {
+    var _a2;
+    const match = urlLike.match(/\/api\/chapter\/(\d+)(?:[/?#]|$)/);
+    return (_a2 = match == null ? void 0 : match[1]) != null ? _a2 : null;
+  }
+  function parseChapterIdFromChapterRoute(urlLike) {
+    var _a2;
+    const match = urlLike.match(/\/chapter\/(\d+)(?:[/?#]|$)/);
+    return (_a2 = match == null ? void 0 : match[1]) != null ? _a2 : null;
+  }
+  function parseChapterIdFromUrl(urlLike) {
+    var _a2;
+    try {
+      const base = typeof window !== "undefined" && ((_a2 = window.location) == null ? void 0 : _a2.origin) ? window.location.origin : "https://manga-park.com";
+      const parsed = new URL(urlLike, base);
+      return parseChapterIdFromPath(parsed.pathname);
+    } catch (e) {
+      return null;
+    }
+  }
+  function decodeXor(encoded, key) {
+    if (key.length === 0) {
+      return encoded.slice();
+    }
+    const out = new Uint8Array(encoded.length);
+    for (let i = 0; i < encoded.length; i += 1) {
+      out[i] = encoded[i] ^ key[i % key.length];
+    }
+    return out;
+  }
+  function inferFileExtension(pathLike) {
+    var _a2, _b2;
+    const withoutQuery = (_a2 = pathLike.split("?")[0]) != null ? _a2 : pathLike;
+    const baseName = (_b2 = withoutQuery.split("/").pop()) != null ? _b2 : "";
+    const stripped = baseName.endsWith(".enc") ? baseName.slice(0, -4) : baseName;
+    const lastDot = stripped.lastIndexOf(".");
+    const ext = lastDot >= 0 ? stripped.slice(lastDot + 1).toLowerCase() : "";
+    if (!ext || !/^[a-z0-9]+$/.test(ext)) {
+      return "jpg";
+    }
+    return ext;
+  }
+  function extensionToMime(ext) {
+    switch (ext) {
+      case "jpg":
+      case "jpeg":
+        return "image/jpeg";
+      case "png":
+        return "image/png";
+      case "webp":
+        return "image/webp";
+      case "gif":
+        return "image/gif";
+      default:
+        return "application/octet-stream";
+    }
+  }
+  function decodeBase64ToBytes(encoded) {
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
   }
   function sanitizeFilePart(value) {
     const cleaned = Array.from(value, (char) => {
@@ -896,42 +959,89 @@
       }
       return char;
     }).join("");
-    return cleaned.replace(/\s+/g, " ").trim() || "cmoa";
+    return cleaned.replace(/\s+/g, " ").trim() || "manga-park";
   }
-  function getReader() {
-    const reader = window.__sreaderFunc__;
-    if (!reader) {
-      throw new Error("__sreaderFunc__ is unavailable");
+  function getArchiveBaseName(documentTitle) {
+    var _a2;
+    const split = (_a2 = documentTitle.split("|")[0]) == null ? void 0 : _a2.trim();
+    return sanitizeFilePart(split || "manga-park");
+  }
+  function getChapterTitleFromElement(element) {
+    var _a2, _b2, _c;
+    const text = (_c = (_b2 = (_a2 = element.querySelector("p")) == null ? void 0 : _a2.textContent) == null ? void 0 : _b2.trim()) != null ? _c : "";
+    return text ? sanitizeFilePart(text) : null;
+  }
+  function resolveChapterTitle(chapterId) {
+    const hinted = chapterTitleHints.get(chapterId);
+    if (hinted) {
+      return hinted;
     }
-    return reader;
-  }
-  function getSpeedBinbInstance() {
-    const speedBinb = window.SpeedBinb;
-    if (!(speedBinb == null ? void 0 : speedBinb.getInstance)) {
-      throw new Error("SpeedBinb.getInstance is unavailable");
+    const element = document.querySelector(`li[data-chapter-id="${chapterId}"]`);
+    if (!element) {
+      return null;
     }
-    return speedBinb.getInstance("content");
-  }
-  function getBinbContent() {
-    var _a2, _b2;
-    const content = (_b2 = (_a2 = getSpeedBinbInstance().Ii) == null ? void 0 : _a2.Zt) == null ? void 0 : _b2.cu;
-    if (!content) {
-      throw new Error("BinB content internals are unavailable");
+    const fromDom = getChapterTitleFromElement(element);
+    if (fromDom) {
+      chapterTitleHints.set(chapterId, fromDom);
     }
-    return content;
+    return fromDom;
   }
-  function getSourcePage(page) {
-    var _a2, _b2;
-    const sourcePage = (_b2 = (_a2 = getSpeedBinbInstance().content) == null ? void 0 : _a2.page) == null ? void 0 : _b2[page - 1];
-    if (!(sourcePage == null ? void 0 : sourcePage.image)) {
-      throw new Error(`Source page ${page} is unavailable`);
+  function getDirectChapterFromPath() {
+    return parseChapterIdFromPath(window.location.pathname);
+  }
+  function recordChapterIntent(chapterId, chapterTitle) {
+    chapterIntent = { chapterId, chapterTitle, at: Date.now() };
+    if (chapterTitle) {
+      chapterTitleHints.set(chapterId, chapterTitle);
     }
-    return sourcePage;
   }
-  function delay(ms) {
-    return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+  function hasFreshIntentFor(chapterId) {
+    if (!chapterIntent || chapterIntent.chapterId !== chapterId) {
+      return false;
+    }
+    return Date.now() - chapterIntent.at <= INTENT_WINDOW_MS;
   }
-  async function withTimeout(promise, timeoutMs, label) {
+  function shouldActivateFromNetwork(chapterId) {
+    if (chapterSession.mode === "active" && chapterSession.chapterId === chapterId) {
+      return true;
+    }
+    const direct = getDirectChapterFromPath();
+    if (direct === chapterId) {
+      return true;
+    }
+    return hasFreshIntentFor(chapterId);
+  }
+  function setIdle(reason) {
+    chapterSession = { mode: "idle" };
+    if (panelRefs) {
+      panelRefs.panel.remove();
+      panelRefs = null;
+    }
+    log("idle", reason);
+  }
+  async function setActiveChapter(chapterId, reason) {
+    var _a2;
+    if (activatingChapterIds.has(chapterId)) {
+      return;
+    }
+    activatingChapterIds.add(chapterId);
+    try {
+      const now = Date.now();
+      const chapterTitle = hasFreshIntentFor(chapterId) ? (_a2 = chapterIntent == null ? void 0 : chapterIntent.chapterTitle) != null ? _a2 : resolveChapterTitle(chapterId) : resolveChapterTitle(chapterId);
+      chapterSession = { mode: "active", chapterId, chapterTitle, activatedAt: now };
+      await ensurePanelForChapter(chapterId);
+      log("active", { chapterId, reason });
+    } finally {
+      activatingChapterIds.delete(chapterId);
+    }
+  }
+  function getActiveChapter() {
+    if (chapterSession.mode !== "active") {
+      throw new Error("No active chapter. Open a chapter reader first.");
+    }
+    return { chapterId: chapterSession.chapterId, chapterTitle: chapterSession.chapterTitle };
+  }
+  async function withTimeout(promise, label) {
     return await new Promise((resolve, reject) => {
       let settled = false;
       const timer = globalThis.setTimeout(() => {
@@ -939,8 +1049,8 @@
           return;
         }
         settled = true;
-        reject(new Error(`${label} timeout (${timeoutMs}ms)`));
-      }, timeoutMs);
+        reject(new Error(`${label} timeout (${REQUEST_TIMEOUT_MS}ms)`));
+      }, REQUEST_TIMEOUT_MS);
       void promise.then((value) => {
         if (settled) {
           return;
@@ -958,18 +1068,16 @@
       });
     });
   }
-  async function retryAsync(operation, options) {
-    var _a2;
-    const delays = options.delaysMs;
+  async function retryAsync(operation, shouldRetry) {
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await operation();
       } catch (error) {
-        if (attempt >= delays.length || !options.shouldRetry(error)) {
+        if (attempt >= RETRY_DELAYS_MS.length || !shouldRetry(error)) {
           throw error;
         }
-        await ((_a2 = options.onRetry) == null ? void 0 : _a2.call(options, attempt + 1, error));
-        await delay(delays[attempt]);
+        log("retry", { attempt: attempt + 1, error });
+        await delay(RETRY_DELAYS_MS[attempt]);
       }
     }
   }
@@ -978,7 +1086,7 @@
       return [];
     }
     const out = new Array(items.length);
-    const limit = Math.max(1, Number.isFinite(concurrency) ? Math.floor(concurrency) : 1);
+    const limit = Math.max(1, Math.floor(concurrency));
     let cursor = 0;
     const run = async () => {
       while (true) {
@@ -990,103 +1098,65 @@
         out[idx] = await worker(items[idx], idx);
       }
     };
-    const runners = [];
-    for (let i = 0; i < Math.min(limit, items.length); i += 1) {
-      runners.push(run());
-    }
-    await Promise.all(runners);
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
     return out;
   }
-  async function waitFor(label, factory) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
-      const value = factory();
-      if (value) {
-        return value;
-      }
-      await delay(100);
+  async function fetchChapterPages(chapterId) {
+    var _a2;
+    const url = `${window.location.origin}/api/chapter/${chapterId}`;
+    const fetchImpl = nativeFetchRef != null ? nativeFetchRef : fetch;
+    const response = await withTimeout(fetchImpl(url, { credentials: "same-origin" }), "chapter api");
+    if (!response.ok) {
+      throw new Error(`Chapter API failed: ${response.status}`);
     }
-    throw new Error(`Timed out waiting for ${label}`);
+    const payload = await response.json();
+    const pages = (_a2 = payload.data) == null ? void 0 : _a2.chapter;
+    if (!pages || !Array.isArray(pages) || pages.length === 0) {
+      throw new Error("No chapter pages in API response");
+    }
+    return pages;
   }
-  async function loadSourceImage(src) {
-    const img = new Image();
-    const loadPromise = new Promise((resolve, reject) => {
-      img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`Failed to load source image: ${src}`));
-      img.src = src;
-    });
-    try {
-      return await withTimeout(loadPromise, REQUEST_TIMEOUT_MS, "image load");
-    } catch (error) {
-      img.onload = null;
-      img.onerror = null;
-      img.src = "";
-      throw error;
+  async function loadChapterPages(chapterId) {
+    const cached = chapterPagesCache.get(chapterId);
+    if (cached && cached.length > 0) {
+      return cached;
     }
+    const pages = await fetchChapterPages(chapterId);
+    chapterPagesCache.set(chapterId, pages);
+    return pages;
   }
-  async function canvasToBlob(canvas) {
-    return await new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error("canvas.toBlob returned null"));
-          return;
-        }
-        resolve(blob);
-      }, IMAGE_MIME);
-    });
+  function getPageImage(page, pageNumber) {
+    var _a2;
+    const image = (_a2 = page.images) == null ? void 0 : _a2[0];
+    if (!(image == null ? void 0 : image.path)) {
+      throw new Error(`Page ${pageNumber} image is unavailable`);
+    }
+    return image;
   }
-  async function capturePage(page) {
-    const sourcePage = getSourcePage(page);
-    const binbContent = getBinbContent();
-    const sourceUrl = resolveBinbSourceUrl(binbContent, sourcePage.image);
-    const sourceImage = await loadSourceImage(sourceUrl);
-    const descramble = resolveBinbDescramble(binbContent, sourcePage.image, {
-      width: sourceImage.naturalWidth,
-      height: sourceImage.naturalHeight
-    });
-    if (!descramble) {
-      throw new Error(`Descramble data is unavailable for page ${page}`);
+  async function capturePage(pageNumber, page) {
+    const image = getPageImage(page, pageNumber);
+    const fileExt = inferFileExtension(image.path);
+    const fileName = `${String(pageNumber).padStart(4, "0")}.${fileExt}`;
+    const fetchImpl = nativeFetchRef != null ? nativeFetchRef : fetch;
+    const response = await withTimeout(
+      fetchImpl(image.path, { credentials: "same-origin" }),
+      "image fetch"
+    );
+    if (!response.ok) {
+      throw new Error(`Image request failed for page ${pageNumber}: ${response.status}`);
     }
-    const plan = buildDrawPlanFromDescramble(descramble);
-    const canvas = document.createElement("canvas");
-    canvas.width = plan.width;
-    canvas.height = plan.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("2d context is unavailable");
-    }
-    for (const draw of plan.draws) {
-      ctx.drawImage(
-        sourceImage,
-        draw.xsrc,
-        draw.ysrc,
-        draw.width,
-        draw.height,
-        draw.xdest,
-        draw.ydest,
-        draw.width,
-        draw.height
-      );
-    }
-    return {
-      page,
-      fileName: `${String(page).padStart(4, "0")}.${IMAGE_EXT}`,
-      blob: await canvasToBlob(canvas)
-    };
+    const encodedBytes = new Uint8Array(await response.arrayBuffer());
+    const keyBytes = image.key ? decodeBase64ToBytes(image.key) : new Uint8Array();
+    const decodedBytes = decodeXor(encodedBytes, keyBytes);
+    const blob = new Blob([decodedBytes], { type: extensionToMime(fileExt) });
+    return { page: pageNumber, fileName, blob };
   }
   function shouldRetryCapture(error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return /timeout|network|Failed to load source image/i.test(message);
+    const text = String(error);
+    return /timeout|network|fetch|failed|status/i.test(text);
   }
-  async function capturePageWithRetry(page) {
-    return await retryAsync(() => capturePage(page), {
-      delaysMs: RETRY_DELAYS_MS,
-      shouldRetry: shouldRetryCapture,
-      onRetry: (attempt, error) => {
-        log(`retry page ${page} attempt ${attempt}`, error);
-      }
-    });
+  async function capturePageWithRetry(pageNumber, page) {
+    return await retryAsync(() => capturePage(pageNumber, page), shouldRetryCapture);
   }
   async function zipFilesAsync(files) {
     return await new Promise((resolve, reject) => {
@@ -1107,27 +1177,10 @@
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
   }
-  function buildArchiveBaseName(documentTitle) {
-    var _a2;
-    return ((_a2 = documentTitle.split("|")[0]) == null ? void 0 : _a2.trim()) || "cmoa";
-  }
   function formatCaptureProgress(done, total) {
     return `capturing ${done}/${Math.max(1, total)}`;
   }
-  function formatZipProgress() {
-    return "zipping...";
-  }
-  function buildDrawPlanFromDescramble(result) {
-    return {
-      width: result.width,
-      height: result.height,
-      draws: result.transfers.flatMap((transfer) => transfer.coords)
-    };
-  }
-  function getArchiveBaseName() {
-    return sanitizeFilePart(buildArchiveBaseName(document.title));
-  }
-  async function createZip(results) {
+  async function createZip(results, chapterTitle) {
     var _a2, _b2, _c, _d;
     const files = {};
     for (const result of results) {
@@ -1135,7 +1188,8 @@
     }
     const from = (_b2 = (_a2 = results[0]) == null ? void 0 : _a2.page) != null ? _b2 : 1;
     const to = (_d = (_c = results[results.length - 1]) == null ? void 0 : _c.page) != null ? _d : from;
-    const fileName = `${getArchiveBaseName()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
+    const prefix = chapterTitle ? `${getArchiveBaseName(document.title)}_${chapterTitle}` : getArchiveBaseName(document.title);
+    const fileName = `${prefix}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
     const zipped = await zipFilesAsync(files);
     return {
       blob: new Blob([zipped], { type: ZIP_MIME }),
@@ -1143,22 +1197,23 @@
     };
   }
   async function captureRange(options) {
-    var _a2, _b2, _c, _d, _e;
-    const reader = getReader();
-    const endPage = (_b2 = (_a2 = reader.currentPageInfo) == null ? void 0 : _a2.endPageNumber) != null ? _b2 : 1;
+    var _a2, _b2, _c;
+    const active = getActiveChapter();
+    const chapterId = active.chapterId;
+    const pages = await loadChapterPages(chapterId);
+    const endPage = pages.length;
     const from = Math.max(1, Math.min(options.from, options.to, endPage));
     const to = Math.max(1, Math.min(Math.max(options.from, options.to), endPage));
-    const downloadZip = (_c = options.downloadZip) != null ? _c : true;
     const total = to - from + 1;
-    const pages = Array.from({ length: total }, (_unused, idx) => from + idx);
+    const pageIndexes = Array.from({ length: total }, (_unused, idx) => from + idx);
+    const downloadZip = (_a2 = options.downloadZip) != null ? _a2 : true;
     let completed = 0;
-    (_d = options.onProgress) == null ? void 0 : _d.call(options, formatCaptureProgress(0, total));
-    const results = await mapWithConcurrency(pages, CAPTURE_CONCURRENCY, async (page) => {
+    (_b2 = options.onProgress) == null ? void 0 : _b2.call(options, formatCaptureProgress(0, total));
+    const results = await mapWithConcurrency(pageIndexes, CAPTURE_CONCURRENCY, async (pageNumber) => {
       var _a3;
-      const result = await capturePageWithRetry(page);
+      const result = await capturePageWithRetry(pageNumber, pages[pageNumber - 1]);
       completed += 1;
       (_a3 = options.onProgress) == null ? void 0 : _a3.call(options, formatCaptureProgress(completed, total));
-      await delay(50);
       return result;
     });
     results.sort((a, b) => a.page - b.page);
@@ -1168,8 +1223,8 @@
       capturedPages: results.map((result) => result.page)
     };
     if (downloadZip && results.length > 0) {
-      (_e = options.onProgress) == null ? void 0 : _e.call(options, formatZipProgress());
-      const zipResult = await createZip(results);
+      (_c = options.onProgress) == null ? void 0 : _c.call(options, "zipping...");
+      const zipResult = await createZip(results, active.chapterTitle);
       downloadBlob(zipResult.blob, zipResult.fileName);
       summary.zipName = zipResult.fileName;
     }
@@ -1190,12 +1245,7 @@
     ].join(";");
     return input;
   }
-  function mountPanel() {
-    var _a2, _b2;
-    if (document.getElementById(PANEL_ID)) {
-      return;
-    }
-    const endPage = (_b2 = (_a2 = getReader().currentPageInfo) == null ? void 0 : _a2.endPageNumber) != null ? _b2 : 1;
+  function createPanelShell() {
     const panel = document.createElement("div");
     panel.id = PANEL_ID;
     panel.style.cssText = [
@@ -1214,67 +1264,161 @@
       "color: #fff",
       "font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace"
     ].join(";");
+    const chapterLabel = document.createElement("span");
+    chapterLabel.style.fontWeight = "700";
     const fromInput = createInput("1");
-    const toInput = createInput(String(endPage));
+    const toInput = createInput("1");
     const button = document.createElement("button");
     button.textContent = "capture zip";
     button.style.cssText = [
       "padding: 6px 10px",
       "border: 0",
       "border-radius: 6px",
-      "background: #f6b73c",
-      "color: #181818",
+      "background: #6ad3a5",
+      "color: #111",
       "font-weight: 700",
       "cursor: pointer"
     ].join(";");
     const status = document.createElement("span");
-    status.textContent = `1-${endPage}`;
+    status.textContent = "ready";
+    panel.append(
+      chapterLabel,
+      document.createTextNode("pages"),
+      fromInput,
+      document.createTextNode("~"),
+      toInput,
+      button,
+      status
+    );
+    const refs = {
+      panel,
+      chapterLabel,
+      fromInput,
+      toInput,
+      button,
+      status,
+      chapterId: ""
+    };
     button.onclick = async () => {
-      const from = Number.parseInt(fromInput.value || "1", 10);
-      const to = Number.parseInt(toInput.value || String(endPage), 10);
-      button.disabled = true;
-      status.textContent = formatCaptureProgress(0, Math.max(1, Math.abs(to - from) + 1));
+      const chapterIdAtStart = getActiveChapter().chapterId;
+      const from = Number.parseInt(refs.fromInput.value || "1", 10);
+      const to = Number.parseInt(refs.toInput.value || "1", 10);
+      refs.button.disabled = true;
+      refs.status.textContent = `chapter ${chapterIdAtStart}: ${formatCaptureProgress(0, Math.max(1, Math.abs(to - from) + 1))}`;
       try {
         const summary = await captureRange({
           from,
           to,
           downloadZip: true,
           onProgress: (message) => {
-            status.textContent = message;
+            refs.status.textContent = `chapter ${chapterIdAtStart}: ${message}`;
           }
         });
-        status.textContent = `saved ${summary.from}-${summary.to}`;
+        refs.status.textContent = `chapter ${chapterIdAtStart}: saved ${summary.from}-${summary.to}`;
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : String(error);
+        refs.status.textContent = error instanceof Error ? error.message : String(error);
         console.error(error);
       } finally {
-        button.disabled = false;
+        refs.button.disabled = false;
       }
     };
-    panel.append("pages", fromInput, document.createTextNode("~"), toInput, button, status);
-    document.body.appendChild(panel);
+    return refs;
   }
-  function init() {
-    window.__mosaiComAntiLite__ = { captureRange };
-    const timer = window.setInterval(() => {
+  async function ensurePanelForChapter(chapterId) {
+    if (!document.body) {
+      return;
+    }
+    const pages = await loadChapterPages(chapterId);
+    const endPage = pages.length;
+    if (!panelRefs) {
+      panelRefs = createPanelShell();
+      document.body.appendChild(panelRefs.panel);
+    }
+    panelRefs.chapterId = chapterId;
+    const title = resolveChapterTitle(chapterId);
+    panelRefs.chapterLabel.textContent = title ? `ch ${chapterId} ${title}` : `ch ${chapterId}`;
+    panelRefs.fromInput.value = "1";
+    panelRefs.toInput.value = String(endPage);
+    panelRefs.status.textContent = `chapter ${chapterId} ready (1-${endPage})`;
+  }
+  function installChapterIntentListener() {
+    document.addEventListener(
+      "click",
+      (event) => {
+        const target = event.target;
+        if (!target) {
+          return;
+        }
+        if (target.closest(".close-viewer")) {
+          setIdle("viewer closed");
+          return;
+        }
+        const chapterElement = target.closest("li[data-chapter-id]");
+        if (!chapterElement) {
+          return;
+        }
+        const chapterId = chapterElement.getAttribute("data-chapter-id");
+        const dataUrl = chapterElement.getAttribute("data-url");
+        const chapterFromDataUrl = parseChapterIdFromChapterRoute(dataUrl != null ? dataUrl : "");
+        const effective = chapterId != null ? chapterId : chapterFromDataUrl;
+        if (!effective) {
+          return;
+        }
+        const chapterTitle = getChapterTitleFromElement(chapterElement);
+        recordChapterIntent(effective, chapterTitle);
+        log("intent", effective);
+      },
+      true
+    );
+  }
+  function onChapterApiResponse(urlLike, status, source) {
+    if (status < 200 || status >= 400) {
+      return;
+    }
+    const chapterId = parseChapterIdFromApiUrl(urlLike);
+    if (!chapterId) {
+      return;
+    }
+    if (!shouldActivateFromNetwork(chapterId)) {
+      return;
+    }
+    void setActiveChapter(chapterId, `${source} response`);
+  }
+  function installNetworkObservers() {
+    const originalFetch = window.fetch.bind(window);
+    nativeFetchRef = originalFetch;
+    window.fetch = (async (...args) => {
       var _a2, _b2;
-      const reader = window.__sreaderFunc__;
-      const endPageNumber = (_b2 = (_a2 = reader == null ? void 0 : reader.currentPageInfo) == null ? void 0 : _a2.endPageNumber) != null ? _b2 : null;
-      log("probe", { readyState: document.readyState, endPageNumber });
-      if (!reader || !endPageNumber || !document.body) {
-        return;
-      }
-      window.clearInterval(timer);
-      mountPanel();
-      log("ready", endPageNumber);
-    }, 250);
+      const response = await originalFetch(...args);
+      const urlLike = typeof args[0] === "string" ? args[0] : (_b2 = (_a2 = args[0]) == null ? void 0 : _a2.url) != null ? _b2 : "";
+      onChapterApiResponse(urlLike, response.status, "fetch");
+      return response;
+    });
+    const originalOpen = XMLHttpRequest.prototype.open;
+    const originalSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function openProxy(method, url, async, username, password) {
+      this.__mangaParkLiteUrl = String(url);
+      originalOpen.call(this, method, url, async != null ? async : true, username, password);
+    };
+    XMLHttpRequest.prototype.send = function sendProxy(body) {
+      this.addEventListener("load", () => {
+        var _a2, _b2;
+        onChapterApiResponse((_b2 = (_a2 = this.__mangaParkLiteUrl) != null ? _a2 : this.responseURL) != null ? _b2 : "", this.status, "xhr");
+      });
+      originalSend.call(this, body);
+    };
+  }
+  async function init() {
+    window.__mangaParkLite__ = { captureRange };
+    installChapterIntentListener();
+    installNetworkObservers();
+    const directChapter = getDirectChapterFromPath();
+    if (directChapter) {
+      await setActiveChapter(directChapter, "direct url");
+    }
   }
   if (typeof window !== "undefined" && typeof document !== "undefined") {
-    void waitFor("reader page count", () => {
-      var _a2, _b2, _c;
-      const endPageNumber = (_c = (_b2 = (_a2 = window.__sreaderFunc__) == null ? void 0 : _a2.currentPageInfo) == null ? void 0 : _b2.endPageNumber) != null ? _c : null;
-      return endPageNumber && endPageNumber > 0 ? endPageNumber : null;
-    }).then(() => init()).catch((error) => console.error("[MosaiComAntiLite] init failed", error));
+    void init().catch((error) => console.error("[MangaParkLite] init failed", error));
   }
 })();
 
