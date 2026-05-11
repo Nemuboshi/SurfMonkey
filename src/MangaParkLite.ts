@@ -243,13 +243,13 @@ async function setActiveChapter(chapterId: string, reason: string): Promise<void
   }
   activatingChapterIds.add(chapterId);
   try {
-  const now = Date.now();
-  const chapterTitle = hasFreshIntentFor(chapterId)
-    ? chapterIntent?.chapterTitle ?? resolveChapterTitle(chapterId)
-    : resolveChapterTitle(chapterId);
-  chapterSession = { mode: "active", chapterId, chapterTitle, activatedAt: now };
-  await ensurePanelForChapter(chapterId);
-  log("active", { chapterId, reason });
+    const now = Date.now();
+    const chapterTitle = hasFreshIntentFor(chapterId)
+      ? (chapterIntent?.chapterTitle ?? resolveChapterTitle(chapterId))
+      : resolveChapterTitle(chapterId);
+    chapterSession = { mode: "active", chapterId, chapterTitle, activatedAt: now };
+    await ensurePanelForChapter(chapterId);
+    log("active", { chapterId, reason });
   } finally {
     activatingChapterIds.delete(chapterId);
   }
@@ -650,7 +650,7 @@ function installNetworkObservers(): void {
   nativeFetchRef = originalFetch;
   window.fetch = (async (...args: Parameters<typeof fetch>) => {
     const response = await originalFetch(...args);
-    const urlLike = typeof args[0] === "string" ? args[0] : args[0]?.url ?? "";
+    const urlLike = typeof args[0] === "string" ? args[0] : (args[0]?.url ?? "");
     onChapterApiResponse(urlLike, response.status, "fetch");
     return response;
   }) as typeof fetch;
@@ -670,7 +670,10 @@ function installNetworkObservers(): void {
     originalOpen.call(this, method, url, async ?? true, username, password);
   };
 
-  XMLHttpRequest.prototype.send = function sendProxy(this: XMLHttpRequest & { __mangaParkLiteUrl?: string }, body?: Document | XMLHttpRequestBodyInit | null): void {
+  XMLHttpRequest.prototype.send = function sendProxy(
+    this: XMLHttpRequest & { __mangaParkLiteUrl?: string },
+    body?: Document | XMLHttpRequestBodyInit | null,
+  ): void {
     this.addEventListener("load", () => {
       onChapterApiResponse(this.__mangaParkLiteUrl ?? this.responseURL ?? "", this.status, "xhr");
     });

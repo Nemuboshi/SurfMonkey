@@ -1,0 +1,10 @@
+name: PxixvComicrown
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Download full Pixiv Comic episodes from works pages or viewer pages as ZIP archives.
+match:
+  - https://comic.pixiv.net/works/*
+  - https://comic.pixiv.net/viewer/stories/*
+grant:
+  - none
+run-at: document-idle
