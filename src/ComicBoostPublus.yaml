@@ -1,0 +1,9 @@
+name: ComicBoostPublus
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Download Comic Boost PUBLUS reader pages as image ZIP archives.
+match:
+  - https://comic-boost.com/viewer/viewer.html*
+grant:
+  - none
+run-at: document-idle

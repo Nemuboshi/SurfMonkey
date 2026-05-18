@@ -1,0 +1,9 @@
+name: Renta Papy Capture
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Download Renta Papy viewer pages as PNG ZIP archives.
+match:
+  - https://dre-viewer.papy.co.jp/sc/view_jsimg5/*/index.view*
+grant:
+  - none
+run-at: document-idle
