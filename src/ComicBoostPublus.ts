@@ -100,6 +100,11 @@ type RenderedPage = {
   pageNumber: number;
 };
 
+type MovedSpread = {
+  fingerprint: string;
+  spread: ViewerSpread;
+};
+
 type ReaderSession = {
   cleanup: () => void;
   getCurrentScreen: () => {
@@ -110,7 +115,10 @@ type ReaderSession = {
   getCurrentSignature: () => string;
   getSlider: () => { max: number; min: number; slider: JquerySliderLike };
   getSpread: () => ViewerSpread | null;
-  waitForRender: () => Promise<void>;
+  waitForRender: (
+    previousFingerprint?: string | null,
+    expectedSignature?: string | null,
+  ) => Promise<string>;
   window: Window;
 };
 
@@ -181,8 +189,14 @@ function getRenderViewport(targetWindow: Window = window): { height: number; wid
   }
 
   return {
-    width: pages.reduce((sum, page) => sum + (page.width ?? 0), 0),
-    height: pages.reduce((max, page) => Math.max(max, page.height ?? 0), 0),
+    width: Math.max(
+      DEFAULT_RENDER_VIEWPORT.width,
+      pages.reduce((sum, page) => sum + (page.width ?? 0), 0),
+    ),
+    height: Math.max(
+      DEFAULT_RENDER_VIEWPORT.height,
+      pages.reduce((max, page) => Math.max(max, page.height ?? 0), 0),
+    ),
   };
 }
 
@@ -201,6 +215,58 @@ function normalizeRect(rect: RenderRect | undefined | null): RenderRect | null {
     width,
     height,
   };
+}
+
+function getRenderFingerprint(
+  currentScreen:
+    | {
+        canvas?: HTMLCanvasElement;
+        leftDrawnRect?: RenderRect;
+        rightDrawnRect?: RenderRect;
+      }
+    | null
+    | undefined,
+): string | null {
+  const canvas = currentScreen?.canvas;
+  if (!canvas || canvas.width <= 0 || canvas.height <= 0) {
+    return null;
+  }
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) {
+    return null;
+  }
+
+  const rects = [
+    normalizeRect(currentScreen?.leftDrawnRect),
+    normalizeRect(currentScreen?.rightDrawnRect),
+  ].filter((rect): rect is RenderRect => Boolean(rect));
+  if (rects.length === 0) {
+    return `${canvas.width}x${canvas.height}`;
+  }
+
+  const sampleOffsets = [0.2, 0.5, 0.8];
+  const parts = [`${canvas.width}x${canvas.height}`];
+
+  for (const rect of rects) {
+    parts.push(`${rect.x},${rect.y},${rect.width},${rect.height}`);
+    for (const offsetY of sampleOffsets) {
+      for (const offsetX of sampleOffsets) {
+        const x = Math.min(
+          canvas.width - 1,
+          Math.max(0, Math.round(rect.x + (rect.width - 1) * offsetX)),
+        );
+        const y = Math.min(
+          canvas.height - 1,
+          Math.max(0, Math.round(rect.y + (rect.height - 1) * offsetY)),
+        );
+        const rgba = ctx.getImageData(x, y, 1, 1).data;
+        parts.push(`${rgba[0]},${rgba[1]},${rgba[2]},${rgba[3]}`);
+      }
+    }
+  }
+
+  return parts.join("|");
 }
 
 function blobFromCanvas(sourceCanvas: HTMLCanvasElement, rect: RenderRect): Promise<Blob> {
@@ -345,17 +411,43 @@ function getSpreadSignature(spread: ViewerSpread | null | undefined): string {
   return `${leftIndex}|${rightIndex}|${leftUrl}|${rightUrl}`;
 }
 
-async function waitForReader(targetWindow: Window = window): Promise<number> {
+async function waitForReader(targetWindow: Window = window): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < REQUEST_TIMEOUT_MS) {
     const attrs = getViewerAttributes(targetWindow);
     const slider = targetWindow.document.getElementById("pageSliderBar");
     if (attrs?.contentTitle && slider) {
-      return getTotalPages(targetWindow);
+      return;
     }
     await delay(250);
   }
   throw new Error("Reader did not become ready");
+}
+
+async function waitForPageMetrics(
+  targetWindow: Window = window,
+): Promise<{ max: number; min: number; totalPages: number }> {
+  await waitForReader(targetWindow);
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < REQUEST_TIMEOUT_MS) {
+    try {
+      const totalPages = getTotalPages(targetWindow);
+      const { min, max } = getSliderApi(targetWindow);
+      if (
+        Number.isFinite(totalPages) &&
+        totalPages > 0 &&
+        Number.isFinite(min) &&
+        Number.isFinite(max)
+      ) {
+        return { totalPages, min, max };
+      }
+    } catch {}
+
+    await delay(250);
+  }
+
+  throw new Error("Page metrics did not become ready");
 }
 
 async function createReaderSession(sourceUrl: string): Promise<ReaderSession> {
@@ -395,15 +487,45 @@ async function createReaderSession(sourceUrl: string): Promise<ReaderSession> {
   const getCurrentScreen = () =>
     targetWindow.NFBR?.a6G?.Initializer?.B6o?.renderer?.currentScreen ?? null;
 
-  const waitForRender = async (): Promise<void> => {
+  const waitForRender = async (
+    previousFingerprint: string | null = null,
+    expectedSignature: string | null = null,
+  ): Promise<string> => {
     const startedAt = Date.now();
+    let stableFingerprint: string | null = null;
+    let stableCount = 0;
     while (Date.now() - startedAt < REQUEST_TIMEOUT_MS) {
       const currentScreen = getCurrentScreen();
       const spread = getViewerAttributes(targetWindow)?.viewerSpread;
       const leftReady = !spread?.left || Boolean(normalizeRect(currentScreen?.leftDrawnRect));
       const rightReady = !spread?.right || Boolean(normalizeRect(currentScreen?.rightDrawnRect));
-      if (currentScreen?.canvas && leftReady && rightReady) {
-        return;
+      const currentSignature = getSpreadSignature(spread);
+      if (
+        currentScreen?.canvas &&
+        leftReady &&
+        rightReady &&
+        (!expectedSignature || currentSignature === expectedSignature)
+      ) {
+        const fingerprint = getRenderFingerprint(currentScreen);
+        if (fingerprint) {
+          if (fingerprint === stableFingerprint) {
+            stableCount += 1;
+          } else {
+            stableFingerprint = fingerprint;
+            stableCount = 1;
+          }
+
+          if (fingerprint !== previousFingerprint && stableCount >= 2) {
+            return fingerprint;
+          }
+
+          if (fingerprint === previousFingerprint && stableCount >= 6) {
+            return fingerprint;
+          }
+        }
+      } else {
+        stableFingerprint = null;
+        stableCount = 0;
       }
       await delay(UI_POLL_INTERVAL_MS);
     }
@@ -433,7 +555,8 @@ async function moveSessionToSliderValue(
   session: ReaderSession,
   sliderValue: number,
   previousSignature: string | null,
-): Promise<ViewerSpread> {
+  previousFingerprint: string | null,
+): Promise<MovedSpread> {
   const { slider } = session.getSlider();
   slider.slider("value", sliderValue);
   slider.trigger("slidechange");
@@ -444,8 +567,11 @@ async function moveSessionToSliderValue(
     const currentSignature = getSpreadSignature(spread);
     const currentValue = Number(session.getSlider().slider.slider("value"));
     if (spread && currentValue === sliderValue && currentSignature !== previousSignature) {
-      await session.waitForRender();
-      return spread;
+      const fingerprint = await session.waitForRender(previousFingerprint, currentSignature);
+      const settledSpread = session.getSpread();
+      if (settledSpread && getSpreadSignature(settledSpread) === currentSignature) {
+        return { spread: settledSpread, fingerprint };
+      }
     }
     await delay(UI_POLL_INTERVAL_MS);
   }
@@ -457,7 +583,7 @@ async function extractRenderedPages(
   session: ReaderSession,
   spread: ViewerSpread,
 ): Promise<RenderedPage[]> {
-  await session.waitForRender();
+  await session.waitForRender(null, getSpreadSignature(spread));
   const currentScreen = session.getCurrentScreen();
   const canvas = currentScreen?.canvas;
   if (!canvas) {
@@ -499,27 +625,20 @@ async function zipFilesAsync(files: Record<string, Uint8Array>): Promise<Uint8Ar
 }
 
 async function captureRange(options: CaptureOptions): Promise<CaptureSummary> {
-  const totalPages = getTotalPages();
+  const { totalPages, min, max } = await waitForPageMetrics(window);
   const from = Math.max(1, Math.min(options.from, options.to, totalPages));
   const to = Math.max(1, Math.min(Math.max(options.from, options.to), totalPages));
   const files: Record<string, Uint8Array> = {};
   const seenPages = new Set<number>();
   let exportedCount = 0;
 
-  options.onProgress?.("opening hidden reader...");
-  const session = await createReaderSession(window.location.href);
+  for (let sliderValue = max; sliderValue >= min; sliderValue -= 1) {
+    options.onProgress?.(`preparing batch ${max - sliderValue + 1}`);
+    const session = await createReaderSession(window.location.href);
 
-  try {
-    const { min, max } = session.getSlider();
-    let previousSignature: string | null = null;
-    const totalSpreads = max - min + 1;
-
-    for (let sliderValue = max; sliderValue >= min; sliderValue -= 1) {
-      options.onProgress?.(`rendering spread ${max - sliderValue + 1} of ${totalSpreads}`);
-      const spread = await moveSessionToSliderValue(session, sliderValue, previousSignature);
-      previousSignature = getSpreadSignature(spread);
-
-      const renderedPages = await extractRenderedPages(session, spread);
+    try {
+      const moved = await moveSessionToSliderValue(session, sliderValue, null, null);
+      const renderedPages = await extractRenderedPages(session, moved.spread);
       for (const page of renderedPages) {
         if (page.pageNumber < from || page.pageNumber > to || seenPages.has(page.pageNumber)) {
           continue;
@@ -530,9 +649,9 @@ async function captureRange(options: CaptureOptions): Promise<CaptureSummary> {
         exportedCount += 1;
         options.onProgress?.(`captured ${exportedCount} of ${to - from + 1} pages`);
       }
+    } finally {
+      session.cleanup();
     }
-  } finally {
-    session.cleanup();
   }
 
   if (exportedCount === 0) {
@@ -645,7 +764,7 @@ async function init(): Promise<void> {
     return;
   }
 
-  const totalPages = await waitForReader();
+  const { totalPages } = await waitForPageMetrics(window);
   const refs = createPanel(totalPages);
   document.body.appendChild(refs.panel);
   log("ready", totalPages);
