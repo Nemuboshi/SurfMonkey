@@ -1,5 +1,7 @@
 import { zip } from "fflate";
 
+import { bytesToBlobPart } from "./blobParts";
+
 type ChapterImage = {
   path: string;
   key?: string;
@@ -383,7 +385,7 @@ async function capturePage(pageNumber: number, page: ChapterPage): Promise<Captu
   const encodedBytes = new Uint8Array(await response.arrayBuffer());
   const keyBytes = image.key ? decodeBase64ToBytes(image.key) : new Uint8Array();
   const decodedBytes = decodeXor(encodedBytes, keyBytes);
-  const blob = new Blob([decodedBytes], { type: extensionToMime(fileExt) });
+  const blob = new Blob([bytesToBlobPart(decodedBytes)], { type: extensionToMime(fileExt) });
   return { page: pageNumber, fileName, blob };
 }
 
@@ -437,7 +439,7 @@ async function createZip(
   const fileName = `${prefix}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
   const zipped = await zipFilesAsync(files);
   return {
-    blob: new Blob([zipped], { type: ZIP_MIME }),
+    blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
     fileName,
   };
 }
@@ -650,7 +652,12 @@ function installNetworkObservers(): void {
   nativeFetchRef = originalFetch;
   window.fetch = (async (...args: Parameters<typeof fetch>) => {
     const response = await originalFetch(...args);
-    const urlLike = typeof args[0] === "string" ? args[0] : (args[0]?.url ?? "");
+    const urlLike =
+      typeof args[0] === "string"
+        ? args[0]
+        : args[0] instanceof Request
+          ? args[0].url
+          : (args[0]?.toString() ?? "");
     onChapterApiResponse(urlLike, response.status, "fetch");
     return response;
   }) as typeof fetch;

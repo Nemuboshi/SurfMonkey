@@ -861,6 +861,13 @@
     fn();
   };
 
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   // src/MangaParkLite.ts
   var PANEL_ID = "__manga_park_lite_panel";
   var ZIP_MIME = "application/zip";
@@ -1148,7 +1155,7 @@
     const encodedBytes = new Uint8Array(await response.arrayBuffer());
     const keyBytes = image.key ? decodeBase64ToBytes(image.key) : new Uint8Array();
     const decodedBytes = decodeXor(encodedBytes, keyBytes);
-    const blob = new Blob([decodedBytes], { type: extensionToMime(fileExt) });
+    const blob = new Blob([bytesToBlobPart(decodedBytes)], { type: extensionToMime(fileExt) });
     return { page: pageNumber, fileName, blob };
   }
   function shouldRetryCapture(error) {
@@ -1192,7 +1199,7 @@
     const fileName = `${prefix}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
     const zipped = await zipFilesAsync(files);
     return {
-      blob: new Blob([zipped], { type: ZIP_MIME }),
+      blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
       fileName
     };
   }
@@ -1390,7 +1397,7 @@
     window.fetch = (async (...args) => {
       var _a2, _b2;
       const response = await originalFetch(...args);
-      const urlLike = typeof args[0] === "string" ? args[0] : (_b2 = (_a2 = args[0]) == null ? void 0 : _a2.url) != null ? _b2 : "";
+      const urlLike = typeof args[0] === "string" ? args[0] : args[0] instanceof Request ? args[0].url : (_b2 = (_a2 = args[0]) == null ? void 0 : _a2.toString()) != null ? _b2 : "";
       onChapterApiResponse(urlLike, response.status, "fetch");
       return response;
     });

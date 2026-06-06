@@ -821,6 +821,15 @@
 
   // src/pageStitcher.ts
   var import_file_saver = __toESM(require_FileSaver_min());
+
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
+  // src/pageStitcher.ts
   (() => {
     const BATCH_SIZE = 50;
     const TIMEOUT = 3e4;
@@ -887,7 +896,7 @@
     async function capturePageBlob(page) {
       var _a2, _b2, _c, _d;
       await waitVisible();
-      const sreader = window.__sreaderFunc__;
+      const sreader = getSReader();
       if (!sreader) {
         throw new Error("__sreaderFunc__ not found");
       }
@@ -987,13 +996,13 @@
         files[name] = new Uint8Array(buffer);
       }
       const zipped = zipSync(files, { level: 0 });
-      const zipBlob = new Blob([zipped], { type: "application/zip" });
+      const zipBlob = new Blob([bytesToBlobPart(zipped)], { type: "application/zip" });
       (0, import_file_saver.saveAs)(zipBlob, fileName);
     }
     async function start(ui) {
       var _a2, _b2;
       const { btn, status, inputFrom, inputTo } = ui;
-      const sreader = window.__sreaderFunc__;
+      const sreader = getSReader();
       if (!sreader) {
         err2("__sreaderFunc__ missing");
         return;
@@ -1142,7 +1151,7 @@
     function init() {
       const timer = window.setInterval(() => {
         var _a2;
-        const sreader = window.__sreaderFunc__;
+        const sreader = getSReader();
         if (!sreader) {
           return;
         }
@@ -1161,5 +1170,8 @@
     }
     init();
   })();
+  function getSReader() {
+    return window.__sreaderFunc__;
+  }
 })();
 

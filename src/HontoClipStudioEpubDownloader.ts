@@ -1,5 +1,7 @@
 import { zip } from "fflate";
 
+import { bytesToBlobPart } from "./blobParts";
+
 type TokenResponse = {
   token?: string;
 };
@@ -724,7 +726,7 @@ async function captureLegacyPage(
     throw new Error("Could not create canvas 2D context");
   }
 
-  const image = await blobToImage(new Blob([binResult.bytes]));
+  const image = await blobToImage(new Blob([bytesToBlobPart(binResult.bytes)]));
   ctx.drawImage(image, 0, 0);
 
   const columns = faceInfo.scrambleWidth;
@@ -798,7 +800,7 @@ async function downloadLegacyImages(
   onProgress?.("zipping...");
   const zipBytes = await zipFilesAsync(files);
   const zipName = `${sanitizeFileName(getPageTitle() || "honto-legacy-images")}.zip`;
-  downloadBlob(new Blob([zipBytes], { type: "application/zip" }), zipName);
+  downloadBlob(new Blob([bytesToBlobPart(zipBytes)], { type: "application/zip" }), zipName);
 
   return {
     failedFiles,
@@ -981,7 +983,7 @@ async function downloadPackage(
   const zipName = `${sanitizeFileName(
     packageIndex.packageTitle || packageIndex.readerTitle || packageIndex.contentId,
   )}.epub`;
-  downloadBlob(new Blob([zipBytes], { type: EPUB_MIME }), zipName);
+  downloadBlob(new Blob([bytesToBlobPart(zipBytes)], { type: EPUB_MIME }), zipName);
 
   return {
     failedFiles,

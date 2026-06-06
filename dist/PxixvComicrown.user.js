@@ -553,6 +553,20 @@
 
   // src/PxixvComicrown.ts
   var import_file_saver = __toESM(require_FileSaver_min());
+
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+  function bytesToImageDataArray(bytes) {
+    const copy = new Uint8ClampedArray(bytes.byteLength);
+    copy.set(bytes);
+    return copy;
+  }
+
+  // src/PxixvComicrown.ts
   var PANEL_ID = "__pxixv_comicrown_panel";
   var ZIP_MIME = "application/zip";
   var FETCH_CONCURRENCY = 4;
@@ -916,7 +930,11 @@
           page.gridsize,
           page.key
         );
-        context.putImageData(new ImageData(descrambled, page.width, page.height), 0, 0);
+        context.putImageData(
+          new ImageData(bytesToImageDataArray(descrambled), page.width, page.height),
+          0,
+          0
+        );
       }
       const pngBlob = await canvasToPngBlob(canvas);
       return {
@@ -945,7 +963,7 @@
           reject(error);
           return;
         }
-        chunks.push(data);
+        chunks.push(bytesToBlobPart(data));
         if (final) {
           resolve(new Blob(chunks, { type: ZIP_MIME }));
         }

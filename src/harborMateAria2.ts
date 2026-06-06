@@ -147,9 +147,13 @@ declare const GM_xmlhttpRequest: ((details: GMXhrDetails) => void) | undefined;
   function loadConfig(): Config {
     const cfg = { ...DEFAULTS };
     for (const key of KEYS) {
-      cfg[key] = GM_getValue(key, DEFAULTS[key]);
+      assignConfigValue(cfg, key);
     }
     return cfg;
+  }
+
+  function assignConfigValue<K extends keyof Config>(cfg: Config, key: K): void {
+    cfg[key] = GM_getValue(key, DEFAULTS[key]);
   }
 
   function saveConfig(cfg: Config): void {
@@ -346,8 +350,9 @@ declare const GM_xmlhttpRequest: ((details: GMXhrDetails) => void) | undefined;
     }
 
     return Array.from(table.querySelectorAll("tbody tr"))
-      .map((tr) => tr.querySelector("td.link a"))
-      .filter((a): a is HTMLAnchorElement => Boolean(a) && !isParentLink(a))
+      .map((tr) => tr.querySelector<HTMLAnchorElement>("td.link a"))
+      .filter((a): a is HTMLAnchorElement => a !== null)
+      .filter((a) => !isParentLink(a))
       .map((a) => {
         const href = a.getAttribute("href") || "";
         return { href, isDir: href.endsWith("/") };

@@ -1,5 +1,7 @@
 import { zip } from "fflate";
 
+import { bytesToBlobPart } from "./blobParts";
+
 type PapyImageEntry = {
   comp?: boolean;
   didx?: number[][];
@@ -195,7 +197,7 @@ async function createZip(results: CaptureResult[]): Promise<{ blob: Blob; fileNa
   const fileName = `${getArchiveBaseName()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
   const zipped = await zipFilesAsync(files);
   return {
-    blob: new Blob([zipped], { type: ZIP_MIME }),
+    blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
     fileName,
   };
 }

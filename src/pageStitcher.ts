@@ -1,6 +1,8 @@
 ﻿import { type Zippable, zipSync } from "fflate";
 import { saveAs } from "file-saver";
 
+import { bytesToBlobPart } from "./blobParts";
+
 type SReaderContentItem = {
   SubTitle: string;
 };
@@ -15,11 +17,9 @@ type SReaderFunc = {
   };
 };
 
-declare global {
-  interface Window {
-    __sreaderFunc__?: SReaderFunc;
-  }
-}
+type PageStitcherWindow = Window & {
+  __sreaderFunc__?: SReaderFunc;
+};
 
 (() => {
   const BATCH_SIZE = 50;
@@ -95,7 +95,7 @@ declare global {
   async function capturePageBlob(page: number): Promise<Blob> {
     await waitVisible();
 
-    const sreader = window.__sreaderFunc__;
+    const sreader = getSReader();
     if (!sreader) {
       throw new Error("__sreaderFunc__ not found");
     }
@@ -240,7 +240,7 @@ declare global {
     }
 
     const zipped = zipSync(files, { level: 0 });
-    const zipBlob = new Blob([zipped], { type: "application/zip" });
+    const zipBlob = new Blob([bytesToBlobPart(zipped)], { type: "application/zip" });
     saveAs(zipBlob, fileName);
   }
 
@@ -254,7 +254,7 @@ declare global {
   async function start(ui: UIState): Promise<void> {
     const { btn, status, inputFrom, inputTo } = ui;
 
-    const sreader = window.__sreaderFunc__;
+    const sreader = getSReader();
     if (!sreader) {
       err("__sreaderFunc__ missing");
       return;
@@ -424,7 +424,7 @@ declare global {
 
   function init(): void {
     const timer = window.setInterval(() => {
-      const sreader = window.__sreaderFunc__;
+      const sreader = getSReader();
       if (!sreader) {
         return;
       }
@@ -448,3 +448,6 @@ declare global {
 
   init();
 })();
+function getSReader(): SReaderFunc | undefined {
+  return (window as PageStitcherWindow).__sreaderFunc__;
+}

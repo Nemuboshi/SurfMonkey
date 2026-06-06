@@ -1,6 +1,8 @@
 import { Zip, ZipPassThrough } from "fflate";
 import { saveAs } from "file-saver";
 
+import { bytesToBlobPart } from "./blobParts";
+
 /**
  * Reimplementation notes (from original speedbinb.js behavior):
  * 1) Call `bibGetCntntInfo.php` with cid/k/dmytime to obtain:
@@ -768,7 +770,7 @@ class TypeSEngine implements ScrambleEngine {
     for (let u = 0; u < this.T * this.j; u += 1) {
       mapped.push(s.p[h.p[u]]);
     }
-    (this as { kt: number[] | null }).kt = mapped;
+    this.kt = mapped;
   }
 
   wt(): boolean {
@@ -1016,14 +1018,14 @@ async function buildZipBlobStream(
   reader: BinbReader,
   onProgress: (done: number, total: number) => void,
 ): Promise<Blob> {
-  const chunks: Uint8Array[] = [];
+  const chunks: BlobPart[] = [];
   const doneZip = new Promise<Blob>((resolve, reject) => {
     const zip = new Zip((err, data, final) => {
       if (err) {
         reject(err);
         return;
       }
-      chunks.push(data);
+      chunks.push(bytesToBlobPart(data));
       if (final) {
         resolve(new Blob(chunks, { type: "application/zip" }));
       }

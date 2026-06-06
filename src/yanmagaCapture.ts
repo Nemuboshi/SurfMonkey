@@ -1,6 +1,6 @@
 import { zip } from "fflate";
-
 import { type BinbContentLike, resolveBinbDescramble, resolveBinbSourceUrl } from "./binbRuntime";
+import { bytesToBlobPart } from "./blobParts";
 
 type YanmagaReader = {
   contentInfo?: {
@@ -92,17 +92,19 @@ type DrawPlan = {
   draws: TransferCoord[];
 };
 
-declare global {
-  interface Window {
+type YanmagaWindowGlobals = {
+  __sreaderFunc__?: YanmagaReader;
+  SpeedBinb?: SpeedBinbStatic;
+  unsafeWindow?: {
     __sreaderFunc__?: YanmagaReader;
-    SpeedBinb?: SpeedBinbStatic;
-    unsafeWindow?: Window & {
-      __sreaderFunc__?: YanmagaReader;
-    };
-    __yanmagaCapture__?: {
-      captureRange: (options: CaptureRangeOptions) => Promise<CaptureSummary>;
-    };
-  }
+  };
+  __yanmagaCapture__?: {
+    captureRange: (options: CaptureRangeOptions) => Promise<CaptureSummary>;
+  };
+};
+
+function getYanmagaWindow(): YanmagaWindowGlobals {
+  return window as unknown as YanmagaWindowGlobals;
 }
 
 const PANEL_ID = "__yanmaga_capture_panel";
@@ -155,8 +157,9 @@ function getReaderProbe(): {
   endPageNumber: number | null;
   status: string;
 } {
-  const unsafeWindowRef = window.unsafeWindow;
-  const windowReader = window.__sreaderFunc__;
+  const targetWindow = getYanmagaWindow();
+  const unsafeWindowRef = targetWindow.unsafeWindow;
+  const windowReader = targetWindow.__sreaderFunc__;
   const unsafeWindowReader = unsafeWindowRef?.__sreaderFunc__;
   const reader = windowReader ?? unsafeWindowReader ?? null;
   const endPageNumber = reader?.currentPageInfo?.endPageNumber ?? null;
@@ -213,7 +216,7 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 function getSpeedBinbInstance(): SpeedBinbInstance {
-  const speedBinb = window.SpeedBinb;
+  const speedBinb = getYanmagaWindow().SpeedBinb;
   if (!speedBinb?.getInstance) {
     throw new Error("SpeedBinb.getInstance is unavailable");
   }
@@ -336,7 +339,7 @@ async function createZip(results: CaptureResult[]): Promise<{ blob: Blob; fileNa
   const fileName = `${getSeriesTitle()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
   const zipped = await zipFilesAsync(files);
   return {
-    blob: new Blob([zipped], { type: ZIP_MIME }),
+    blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
     fileName,
   };
 }
@@ -463,7 +466,7 @@ function mountPanel(): void {
 }
 
 function init(): void {
-  window.__yanmagaCapture__ = { captureRange };
+  getYanmagaWindow().__yanmagaCapture__ = { captureRange };
 
   const timer = window.setInterval(() => {
     const probe = getReaderProbe();

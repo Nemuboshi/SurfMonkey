@@ -1,5 +1,7 @@
 import { zip } from "fflate";
 
+import { bytesToBlobPart } from "./blobParts";
+
 type ViewerPageInfo = {
   BlockHeight: number;
   BlockWidth: number;
@@ -667,7 +669,7 @@ async function captureRange(options: CaptureOptions): Promise<CaptureSummary> {
   const zipBytes = await zipFilesAsync(files);
   const zipName =
     `${getTitle()}_${String(from).padStart(4, "0")}` + `-${String(to).padStart(4, "0")}.zip`;
-  downloadBlob(new Blob([zipBytes], { type: ZIP_MIME }), zipName);
+  downloadBlob(new Blob([bytesToBlobPart(zipBytes)], { type: ZIP_MIME }), zipName);
 
   return { zipName, totalPages };
 }

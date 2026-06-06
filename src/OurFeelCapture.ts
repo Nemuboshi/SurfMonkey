@@ -1,6 +1,8 @@
 import { Zip, ZipPassThrough } from "fflate";
 import { saveAs } from "file-saver";
 
+import { bytesToBlobPart } from "./blobParts";
+
 type RawPageEntry = {
   type?: string;
   src?: string;
@@ -169,12 +171,6 @@ function inferImageExtension(contentType: string | null): string {
   return "jpg";
 }
 
-function toBlobPart(bytes: Uint8Array): BlobPart {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer;
-}
-
 async function blobToBitmap(blob: Blob): Promise<ImageBitmap> {
   return await createImageBitmap(blob);
 }
@@ -297,7 +293,7 @@ async function buildZipBlob(
         reject(error);
         return;
       }
-      chunks.push(toBlobPart(data));
+      chunks.push(bytesToBlobPart(data));
       if (final) {
         resolve(new Blob(chunks, { type: ZIP_MIME }));
       }

@@ -91,9 +91,12 @@
     function loadConfig() {
       const cfg = { ...DEFAULTS };
       for (const key of KEYS) {
-        cfg[key] = GM_getValue(key, DEFAULTS[key]);
+        assignConfigValue(cfg, key);
       }
       return cfg;
+    }
+    function assignConfigValue(cfg, key) {
+      cfg[key] = GM_getValue(key, DEFAULTS[key]);
     }
     function saveConfig(cfg) {
       for (const key of KEYS) {
@@ -259,7 +262,7 @@
       if (!table) {
         return [];
       }
-      return Array.from(table.querySelectorAll("tbody tr")).map((tr) => tr.querySelector("td.link a")).filter((a) => Boolean(a) && !isParentLink(a)).map((a) => {
+      return Array.from(table.querySelectorAll("tbody tr")).map((tr) => tr.querySelector("td.link a")).filter((a) => a !== null).filter((a) => !isParentLink(a)).map((a) => {
         const href = a.getAttribute("href") || "";
         return { href, isDir: href.endsWith("/") };
       });

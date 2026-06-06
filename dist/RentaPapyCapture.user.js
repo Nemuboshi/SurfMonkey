@@ -858,6 +858,13 @@
     fn();
   };
 
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   // src/RentaPapyCapture.ts
   var IMAGE_EXT = "png";
   var IMAGE_MIME = "image/png";
@@ -962,7 +969,7 @@
     const fileName = `${getArchiveBaseName()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
     const zipped = await zipFilesAsync(files);
     return {
-      blob: new Blob([zipped], { type: ZIP_MIME }),
+      blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
       fileName
     };
   }

@@ -858,6 +858,13 @@
     fn();
   };
 
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   // src/binbRuntime.ts
   function resolveBinbSourceUrl(content, image) {
     return content.getImageUrl(image.src);
@@ -885,6 +892,9 @@
   var REQUEST_TIMEOUT_MS = 3e4;
   var CAPTURE_CONCURRENCY = 4;
   var RETRY_DELAYS_MS = [300, 800];
+  function getTargetWindow() {
+    return window;
+  }
   function log(...args) {
     console.log("[MosaiComAntiLite]", ...args);
   }
@@ -899,14 +909,14 @@
     return cleaned.replace(/\s+/g, " ").trim() || "cmoa";
   }
   function getReader() {
-    const reader = window.__sreaderFunc__;
+    const reader = getTargetWindow().__sreaderFunc__;
     if (!reader) {
       throw new Error("__sreaderFunc__ is unavailable");
     }
     return reader;
   }
   function getSpeedBinbInstance() {
-    const speedBinb = window.SpeedBinb;
+    const speedBinb = getTargetWindow().SpeedBinb;
     if (!(speedBinb == null ? void 0 : speedBinb.getInstance)) {
       throw new Error("SpeedBinb.getInstance is unavailable");
     }
@@ -1138,7 +1148,7 @@
     const fileName = `${getArchiveBaseName()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
     const zipped = await zipFilesAsync(files);
     return {
-      blob: new Blob([zipped], { type: ZIP_MIME }),
+      blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
       fileName
     };
   }
@@ -1255,10 +1265,10 @@
     document.body.appendChild(panel);
   }
   function init() {
-    window.__mosaiComAntiLite__ = { captureRange };
+    getTargetWindow().__mosaiComAntiLite__ = { captureRange };
     const timer = window.setInterval(() => {
       var _a2, _b2;
-      const reader = window.__sreaderFunc__;
+      const reader = getTargetWindow().__sreaderFunc__;
       const endPageNumber = (_b2 = (_a2 = reader == null ? void 0 : reader.currentPageInfo) == null ? void 0 : _a2.endPageNumber) != null ? _b2 : null;
       log("probe", { readyState: document.readyState, endPageNumber });
       if (!reader || !endPageNumber || !document.body) {
@@ -1272,7 +1282,7 @@
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     void waitFor("reader page count", () => {
       var _a2, _b2, _c;
-      const endPageNumber = (_c = (_b2 = (_a2 = window.__sreaderFunc__) == null ? void 0 : _a2.currentPageInfo) == null ? void 0 : _b2.endPageNumber) != null ? _c : null;
+      const endPageNumber = (_c = (_b2 = (_a2 = getTargetWindow().__sreaderFunc__) == null ? void 0 : _a2.currentPageInfo) == null ? void 0 : _b2.endPageNumber) != null ? _c : null;
       return endPageNumber && endPageNumber > 0 ? endPageNumber : null;
     }).then(() => init()).catch((error) => console.error("[MosaiComAntiLite] init failed", error));
   }

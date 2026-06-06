@@ -1,6 +1,8 @@
 import { Zip, ZipPassThrough } from "fflate";
 import { saveAs } from "file-saver";
 
+import { bytesToBlobPart, bytesToImageDataArray } from "./blobParts";
+
 type ReadingPage = {
   url: string;
   width: number;
@@ -513,7 +515,11 @@ async function downloadAndDescramblePage(
         page.gridsize,
         page.key,
       );
-      context.putImageData(new ImageData(descrambled, page.width, page.height), 0, 0);
+      context.putImageData(
+        new ImageData(bytesToImageDataArray(descrambled), page.width, page.height),
+        0,
+        0,
+      );
     }
     const pngBlob = await canvasToPngBlob(canvas);
     return {
@@ -541,14 +547,14 @@ async function buildZipBlob(
   });
 
   onProgress?.("zipping");
-  const chunks: Uint8Array[] = [];
+  const chunks: BlobPart[] = [];
   const zipBlob = await new Promise<Blob>((resolve, reject) => {
     const zip = new Zip((error, data, final) => {
       if (error) {
         reject(error);
         return;
       }
-      chunks.push(data);
+      chunks.push(bytesToBlobPart(data));
       if (final) {
         resolve(new Blob(chunks, { type: ZIP_MIME }));
       }

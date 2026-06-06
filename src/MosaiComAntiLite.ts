@@ -1,11 +1,11 @@
 import { zip } from "fflate";
-
 import {
   type BinbContentLike,
   type BinbPageImageLike,
   resolveBinbDescramble,
   resolveBinbSourceUrl,
 } from "./binbRuntime";
+import { bytesToBlobPart } from "./blobParts";
 
 type ReaderInfo = {
   moveTo: (pageIndex: number, animate: boolean) => void;
@@ -57,15 +57,13 @@ type CaptureSummary = {
   zipName?: string;
 };
 
-declare global {
-  interface Window {
-    __sreaderFunc__?: ReaderInfo;
-    SpeedBinb?: SpeedBinbStatic;
-    __mosaiComAntiLite__?: {
-      captureRange: (options: CaptureRangeOptions) => Promise<CaptureSummary>;
-    };
-  }
-}
+type MosaiComAntiLiteWindowGlobals = {
+  __sreaderFunc__?: ReaderInfo;
+  SpeedBinb?: SpeedBinbStatic;
+  __mosaiComAntiLite__?: {
+    captureRange: (options: CaptureRangeOptions) => Promise<CaptureSummary>;
+  };
+};
 
 const PANEL_ID = "__mosaicom_anti_lite_panel";
 const ZIP_MIME = "application/zip";
@@ -75,6 +73,10 @@ const WAIT_TIMEOUT_MS = 30000;
 const REQUEST_TIMEOUT_MS = 30000;
 const CAPTURE_CONCURRENCY = 4;
 const RETRY_DELAYS_MS = [300, 800];
+
+function getTargetWindow(): MosaiComAntiLiteWindowGlobals {
+  return window as unknown as MosaiComAntiLiteWindowGlobals;
+}
 
 function log(...args: unknown[]): void {
   console.log("[MosaiComAntiLite]", ...args);
@@ -93,7 +95,7 @@ function sanitizeFilePart(value: string): string {
 }
 
 function getReader(): ReaderInfo {
-  const reader = window.__sreaderFunc__;
+  const reader = getTargetWindow().__sreaderFunc__;
   if (!reader) {
     throw new Error("__sreaderFunc__ is unavailable");
   }
@@ -101,7 +103,7 @@ function getReader(): ReaderInfo {
 }
 
 function getSpeedBinbInstance(): SpeedBinbInstance {
-  const speedBinb = window.SpeedBinb;
+  const speedBinb = getTargetWindow().SpeedBinb;
   if (!speedBinb?.getInstance) {
     throw new Error("SpeedBinb.getInstance is unavailable");
   }
@@ -399,7 +401,7 @@ async function createZip(results: CaptureResult[]): Promise<{ blob: Blob; fileNa
   const fileName = `${getArchiveBaseName()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
   const zipped = await zipFilesAsync(files);
   return {
-    blob: new Blob([zipped], { type: ZIP_MIME }),
+    blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
     fileName,
   };
 }
@@ -528,10 +530,10 @@ function mountPanel(): void {
 }
 
 function init(): void {
-  window.__mosaiComAntiLite__ = { captureRange };
+  getTargetWindow().__mosaiComAntiLite__ = { captureRange };
 
   const timer = window.setInterval(() => {
-    const reader = window.__sreaderFunc__;
+    const reader = getTargetWindow().__sreaderFunc__;
     const endPageNumber = reader?.currentPageInfo?.endPageNumber ?? null;
     log("probe", { readyState: document.readyState, endPageNumber });
 
@@ -547,7 +549,7 @@ function init(): void {
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   void waitFor("reader page count", () => {
-    const endPageNumber = window.__sreaderFunc__?.currentPageInfo?.endPageNumber ?? null;
+    const endPageNumber = getTargetWindow().__sreaderFunc__?.currentPageInfo?.endPageNumber ?? null;
     return endPageNumber && endPageNumber > 0 ? endPageNumber : null;
   })
     .then(() => init())

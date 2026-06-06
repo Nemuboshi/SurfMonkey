@@ -552,6 +552,15 @@
 
   // src/OurFeelCapture.ts
   var import_file_saver = __toESM(require_FileSaver_min());
+
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
+  // src/OurFeelCapture.ts
   var PANEL_ID = "__ourfeel_capture_panel";
   var ZIP_MIME = "application/zip";
   var FETCH_CONCURRENCY = 4;
@@ -638,11 +647,6 @@
       return "webp";
     }
     return "jpg";
-  }
-  function toBlobPart(bytes) {
-    const copy = new Uint8Array(bytes.byteLength);
-    copy.set(bytes);
-    return copy.buffer;
   }
   async function blobToBitmap(blob) {
     return await createImageBitmap(blob);
@@ -744,7 +748,7 @@
           reject(error);
           return;
         }
-        chunks.push(toBlobPart(data));
+        chunks.push(bytesToBlobPart(data));
         if (final) {
           resolve(new Blob(chunks, { type: ZIP_MIME }));
         }

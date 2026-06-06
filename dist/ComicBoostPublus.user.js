@@ -858,6 +858,13 @@
     fn();
   };
 
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   // src/ComicBoostPublus.ts
   var DEFAULT_RENDER_VIEWPORT = { width: 2048, height: 1456 };
   var EXPORT_EXTENSION = "png";
@@ -1292,7 +1299,7 @@
     (_c = options.onProgress) == null ? void 0 : _c.call(options, "zipping...");
     const zipBytes = await zipFilesAsync(files);
     const zipName = `${getTitle()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
-    downloadBlob(new Blob([zipBytes], { type: ZIP_MIME }), zipName);
+    downloadBlob(new Blob([bytesToBlobPart(zipBytes)], { type: ZIP_MIME }), zipName);
     return { zipName, totalPages };
   }
   function createInput(value) {

@@ -858,6 +858,13 @@
     fn();
   };
 
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   // src/binbRuntime.ts
   function resolveBinbSourceUrl(content, image) {
     return content.getImageUrl(image.src);
@@ -877,6 +884,9 @@
   }
 
   // src/yanmagaCapture.ts
+  function getYanmagaWindow() {
+    return window;
+  }
   var PANEL_ID = "__yanmaga_capture_panel";
   var ZIP_MIME = "application/zip";
   var IMAGE_MIME = "image/png";
@@ -912,8 +922,9 @@
   }
   function getReaderProbe() {
     var _a2, _b2, _c;
-    const unsafeWindowRef = window.unsafeWindow;
-    const windowReader = window.__sreaderFunc__;
+    const targetWindow = getYanmagaWindow();
+    const unsafeWindowRef = targetWindow.unsafeWindow;
+    const windowReader = targetWindow.__sreaderFunc__;
     const unsafeWindowReader = unsafeWindowRef == null ? void 0 : unsafeWindowRef.__sreaderFunc__;
     const reader = (_a2 = windowReader != null ? windowReader : unsafeWindowReader) != null ? _a2 : null;
     const endPageNumber = (_c = (_b2 = reader == null ? void 0 : reader.currentPageInfo) == null ? void 0 : _b2.endPageNumber) != null ? _c : null;
@@ -963,7 +974,7 @@
     });
   }
   function getSpeedBinbInstance() {
-    const speedBinb = window.SpeedBinb;
+    const speedBinb = getYanmagaWindow().SpeedBinb;
     if (!(speedBinb == null ? void 0 : speedBinb.getInstance)) {
       throw new Error("SpeedBinb.getInstance is unavailable");
     }
@@ -1071,7 +1082,7 @@
     const fileName = `${getSeriesTitle()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
     const zipped = await zipFilesAsync(files);
     return {
-      blob: new Blob([zipped], { type: ZIP_MIME }),
+      blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
       fileName
     };
   }
@@ -1184,7 +1195,7 @@
     document.body.appendChild(panel);
   }
   function init() {
-    window.__yanmagaCapture__ = { captureRange };
+    getYanmagaWindow().__yanmagaCapture__ = { captureRange };
     const timer = window.setInterval(() => {
       const probe = getReaderProbe();
       log("init probe", probe.status);

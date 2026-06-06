@@ -859,6 +859,13 @@
     fn();
   };
 
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
   // src/HontoClipStudioEpubDownloader.ts
   var PANEL_ID = "__honto_clipstudio_epub_downloader_panel";
   var REQUEST_TIMEOUT_MS = 3e4;
@@ -1338,7 +1345,7 @@
     if (!ctx) {
       throw new Error("Could not create canvas 2D context");
     }
-    const image = await blobToImage(new Blob([binResult.bytes]));
+    const image = await blobToImage(new Blob([bytesToBlobPart(binResult.bytes)]));
     ctx.drawImage(image, 0, 0);
     const columns = faceInfo.scrambleWidth;
     const rows = faceInfo.scrambleHeight;
@@ -1399,7 +1406,7 @@
     onProgress == null ? void 0 : onProgress("zipping...");
     const zipBytes = await zipFilesAsync(files);
     const zipName = `${sanitizeFileName(getPageTitle() || "honto-legacy-images")}.zip`;
-    downloadBlob(new Blob([zipBytes], { type: "application/zip" }), zipName);
+    downloadBlob(new Blob([bytesToBlobPart(zipBytes)], { type: "application/zip" }), zipName);
     return {
       failedFiles,
       fileCount: Object.keys(files).length,
@@ -1554,7 +1561,7 @@
     const zipName = `${sanitizeFileName(
       packageIndex.packageTitle || packageIndex.readerTitle || packageIndex.contentId
     )}.epub`;
-    downloadBlob(new Blob([zipBytes], { type: EPUB_MIME }), zipName);
+    downloadBlob(new Blob([bytesToBlobPart(zipBytes)], { type: EPUB_MIME }), zipName);
     return {
       failedFiles,
       fileCount: Object.keys(files).length,
