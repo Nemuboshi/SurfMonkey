@@ -35,6 +35,11 @@ It captures visible page slices, stitches them into full PNG pages, and exports 
 A compact in-page helper focused on range-based processing.  
 It performs stream-oriented page reconstruction and supports streaming mosaic packaging for selected segments.
 
+### `HontoClipStudioEpubDownloader`
+
+An analyzer and OPF package downloader for honto's Clip Studio Reader pages.  
+It reports auth stages, endpoint shapes, observed resource types, and OPF package statistics, and can export manifest resources as an EPUB archive.
+
 ### `harborMateAria2`
 
 A FancyIndex companion tool for file operations in listing pages.  

@@ -1,0 +1,9 @@
+name: OurFeelCapture
+namespace: https://ourfeel.jp
+version: 1.0.0
+description: Download OUR FEEL episode pages as ZIP archives.
+match:
+  - https://ourfeel.jp/episode/*
+grant:
+  - none
+run-at: document-end

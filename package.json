@@ -13,7 +13,7 @@
     "keywords": [],
     "author": "",
     "license": "ISC",
-    "packageManager": "pnpm@10.27.0",
+    "packageManager": "pnpm@11.3.0",
     "dependencies": {
         "esbuild": "^0.27.3",
         "fast-glob": "^3.3.3",

@@ -1,0 +1,10 @@
+name: HontoClipStudioEpubDownloader
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Analyze honto Clip Studio Reader metadata and download OPF package resources as EPUB archives.
+match:
+  - https://mbj-bs2.pf.mobilebook.jp/viewer/viewer.html*
+  - https://mbj-bs.pf.mobilebook.jp/*/bsr4b_hybrid/index.php*
+grant:
+  - none
+run-at: document-idle
