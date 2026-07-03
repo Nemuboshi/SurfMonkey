@@ -23,6 +23,28 @@ If your PowerShell blocks `pnpm` scripts, use `pnpm.cmd` instead.
 pnpm build
 ```
 
+`dist/*.user.js` files are committed intentionally. After changing anything under `src/` or
+`scripts/build-userscripts.ts`, run `pnpm build` and commit the matching `dist/` updates.
+
+## Development checks
+
+Run the same checks used by CI:
+
+```bash
+pnpm run ci
+```
+
+For narrower feedback:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+`pnpm run ci` also verifies that tracked `dist/` output is current.
+
 ## Scripts
 
 ### `pageStitcher`
@@ -68,3 +90,6 @@ Arrays (such as `match` and `grant`) are expanded into repeated header lines.
 ```bash
 pnpm clean
 ```
+
+Use `pnpm clean && pnpm build` when you want to regenerate tracked userscript output from
+scratch.

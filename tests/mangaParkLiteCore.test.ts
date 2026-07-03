@@ -27,13 +27,19 @@ test("parseChapterIdFromUrl extracts chapter id from absolute and relative URL",
 
 test("parseChapterIdFromApiUrl extracts chapter id from API endpoint", () => {
   assert.equal(parseChapterIdFromApiUrl("https://manga-park.com/api/chapter/795809"), "795809");
-  assert.equal(parseChapterIdFromApiUrl("https://manga-park.com/api/chapter/795830?foo=bar"), "795830");
+  assert.equal(
+    parseChapterIdFromApiUrl("https://manga-park.com/api/chapter/795830?foo=bar"),
+    "795830",
+  );
   assert.equal(parseChapterIdFromApiUrl("https://manga-park.com/api/title/104555"), null);
 });
 
 test("parseChapterIdFromChapterRoute extracts chapter id from route", () => {
   assert.equal(parseChapterIdFromChapterRoute("/chapter/795809"), "795809");
-  assert.equal(parseChapterIdFromChapterRoute("https://manga-park.com/chapter/795830?x=1"), "795830");
+  assert.equal(
+    parseChapterIdFromChapterRoute("https://manga-park.com/chapter/795830?x=1"),
+    "795830",
+  );
   assert.equal(parseChapterIdFromChapterRoute("/title/104555/795806"), null);
 });
 

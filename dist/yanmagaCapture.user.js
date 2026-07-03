@@ -858,13 +858,6 @@
     fn();
   };
 
-  // src/blobParts.ts
-  function bytesToBlobPart(bytes) {
-    const copy = new Uint8Array(bytes.byteLength);
-    copy.set(bytes);
-    return copy.buffer;
-  }
-
   // src/binbRuntime.ts
   function resolveBinbSourceUrl(content, image) {
     return content.getImageUrl(image.src);
@@ -881,6 +874,13 @@
     } catch (e) {
     }
     return content.getImageDescrambleCoords(image.src, width, height);
+  }
+
+  // src/blobParts.ts
+  function bytesToBlobPart(bytes) {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
   }
 
   // src/yanmagaCapture.ts

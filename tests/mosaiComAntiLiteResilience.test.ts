@@ -62,6 +62,9 @@ test("mapWithConcurrency respects max worker count", async () => {
     return item * 2;
   });
 
-  assert.deepEqual(out, items.map((item) => item * 2));
+  assert.deepEqual(
+    out,
+    items.map((item) => item * 2),
+  );
   assert.equal(maxRunning <= 3, true);
 });

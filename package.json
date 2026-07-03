@@ -5,10 +5,14 @@
     "main": "dist/index.user.js",
     "scripts": {
         "build": "tsx scripts/build-userscripts.ts",
+        "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
         "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-        "format": "biome format --write src scripts",
-        "format:check": "biome format src scripts",
-        "lint": "biome check src scripts"
+        "ci": "pnpm check && git diff --exit-code -- dist",
+        "format": "biome format --write src scripts tests",
+        "format:check": "biome format src scripts tests",
+        "lint": "biome check src scripts tests",
+        "test": "tsx --test tests/*.test.ts",
+        "typecheck": "tsc --noEmit"
     },
     "keywords": [],
     "author": "",
