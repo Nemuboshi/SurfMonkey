@@ -1,46 +1,35 @@
 import { zip } from "fflate";
-import { type BinbContentLike, resolveBinbDescramble, resolveBinbSourceUrl } from "./binbRuntime";
-import { bytesToBlobPart } from "./blobParts";
+import {
+  type BinbContentLike,
+  type BinbPageImageLike,
+  resolveBinbDescramble,
+  resolveBinbSourceUrl,
+} from "../shared/binbRuntime";
+import { bytesToBlobPart } from "../shared/blobParts";
 
-type YanmagaReader = {
-  contentInfo?: {
-    items?: Array<{
-      SubTitle?: string;
-      Title?: string;
-    }>;
-  };
+type ReaderInfo = {
+  moveTo: (pageIndex: number, animate: boolean) => void;
   currentPageInfo?: {
     endPageNumber?: number;
   };
 };
 
-type SpeedBinbPageImage = {
-  id: string;
-  src: string;
-  orgwidth: number;
-  orgheight: number;
-  pagespread: number;
-};
-
 type SpeedBinbPage = {
-  id: string;
-  src: string;
-  index: number;
-  image: SpeedBinbPageImage;
+  image: BinbPageImageLike;
 };
 
 type SpeedBinbContent = {
   page: SpeedBinbPage[];
 };
 
-type SpeedBinbBinbContent = {
-  fu?: BinbContentLike;
+type SpeedBinbReader = {
+  cu?: BinbContentLike;
 };
 
 type SpeedBinbInstance = {
   content: SpeedBinbContent | null;
   Ii?: {
-    Zt?: SpeedBinbBinbContent;
+    Zt?: SpeedBinbReader;
   };
 };
 
@@ -68,114 +57,29 @@ type CaptureSummary = {
   zipName?: string;
 };
 
-type ReaderProbe = {
-  hasWindowReader: boolean;
-  hasUnsafeWindow: boolean;
-  hasUnsafeWindowReader: boolean;
-  hasBody: boolean;
-  readyState: DocumentReadyState;
-  endPageNumber: number | null;
-};
-
-type TransferCoord = {
-  xsrc: number;
-  ysrc: number;
-  width: number;
-  height: number;
-  xdest: number;
-  ydest: number;
-};
-
-type DrawPlan = {
-  width: number;
-  height: number;
-  draws: TransferCoord[];
-};
-
-type YanmagaWindowGlobals = {
-  __sreaderFunc__?: YanmagaReader;
+type MosaiComAntiLiteWindowGlobals = {
+  __sreaderFunc__?: ReaderInfo;
   SpeedBinb?: SpeedBinbStatic;
-  unsafeWindow?: {
-    __sreaderFunc__?: YanmagaReader;
-  };
-  __yanmagaCapture__?: {
+  __mosaiComAntiLite__?: {
     captureRange: (options: CaptureRangeOptions) => Promise<CaptureSummary>;
   };
 };
 
-function getYanmagaWindow(): YanmagaWindowGlobals {
-  return window as unknown as YanmagaWindowGlobals;
-}
-
-const PANEL_ID = "__yanmaga_capture_panel";
+const PANEL_ID = "__mosaicom_anti_lite_panel";
 const ZIP_MIME = "application/zip";
 const IMAGE_MIME = "image/png";
 const IMAGE_EXT = "png";
+const WAIT_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 30000;
+const CAPTURE_CONCURRENCY = 4;
+const RETRY_DELAYS_MS = [300, 800];
+
+function getTargetWindow(): MosaiComAntiLiteWindowGlobals {
+  return window as unknown as MosaiComAntiLiteWindowGlobals;
+}
 
 function log(...args: unknown[]): void {
-  console.log("[YanmagaCapture]", ...args);
-}
-
-export function summarizeReaderProbe(probe: ReaderProbe): string {
-  if (probe.endPageNumber && probe.endPageNumber > 0) {
-    return `reader ok | pages=${probe.endPageNumber} | ready=${probe.readyState}`;
-  }
-
-  if (probe.hasWindowReader || probe.hasUnsafeWindowReader) {
-    return `reader partial | pages=? | ready=${probe.readyState} | uw=${probe.hasUnsafeWindow ? "yes" : "no"}`;
-  }
-
-  return `reader missing | ready=${probe.readyState} | body=${probe.hasBody ? "yes" : "no"} | uw=${probe.hasUnsafeWindow ? "yes" : "no"}`;
-}
-
-export function buildArchiveBaseName(documentTitle: string): string {
-  return documentTitle.split("|")[0]?.trim() || "yanmaga";
-}
-
-export function formatCaptureProgress(done: number, total: number): string {
-  return `capturing ${done}/${Math.max(1, total)}`;
-}
-
-export function formatZipProgress(): string {
-  return "zipping...";
-}
-
-export function buildDrawPlanFromDescramble(result: {
-  width: number;
-  height: number;
-  transfers: Array<{ index: number; coords: TransferCoord[] }>;
-}): DrawPlan {
-  return {
-    width: result.width,
-    height: result.height,
-    draws: result.transfers.flatMap((transfer) => transfer.coords),
-  };
-}
-
-function getReaderProbe(): {
-  reader: YanmagaReader | null;
-  endPageNumber: number | null;
-  status: string;
-} {
-  const targetWindow = getYanmagaWindow();
-  const unsafeWindowRef = targetWindow.unsafeWindow;
-  const windowReader = targetWindow.__sreaderFunc__;
-  const unsafeWindowReader = unsafeWindowRef?.__sreaderFunc__;
-  const reader = windowReader ?? unsafeWindowReader ?? null;
-  const endPageNumber = reader?.currentPageInfo?.endPageNumber ?? null;
-
-  return {
-    reader,
-    endPageNumber,
-    status: summarizeReaderProbe({
-      hasWindowReader: Boolean(windowReader),
-      hasUnsafeWindow: Boolean(unsafeWindowRef),
-      hasUnsafeWindowReader: Boolean(unsafeWindowReader),
-      hasBody: Boolean(document.body),
-      readyState: document.readyState,
-      endPageNumber,
-    }),
-  };
+  console.log("[MosaiComAntiLite]", ...args);
 }
 
 function sanitizeFilePart(value: string): string {
@@ -187,20 +91,161 @@ function sanitizeFilePart(value: string): string {
     return char;
   }).join("");
 
-  return cleaned.replace(/\s+/g, " ").trim() || "yanmaga";
+  return cleaned.replace(/\s+/g, " ").trim() || "cmoa";
 }
 
-function getReader(): YanmagaReader {
-  const { reader, status } = getReaderProbe();
+function getReader(): ReaderInfo {
+  const reader = getTargetWindow().__sreaderFunc__;
   if (!reader) {
-    log("getReader failed", status);
-    throw new Error(`__sreaderFunc__ is unavailable (${status})`);
+    throw new Error("__sreaderFunc__ is unavailable");
   }
   return reader;
 }
 
+function getSpeedBinbInstance(): SpeedBinbInstance {
+  const speedBinb = getTargetWindow().SpeedBinb;
+  if (!speedBinb?.getInstance) {
+    throw new Error("SpeedBinb.getInstance is unavailable");
+  }
+  return speedBinb.getInstance("content");
+}
+
+function getBinbContent(): BinbContentLike {
+  const content = getSpeedBinbInstance().Ii?.Zt?.cu;
+  if (!content) {
+    throw new Error("BinB content internals are unavailable");
+  }
+  return content;
+}
+
+function getSourcePage(page: number): SpeedBinbPage {
+  const sourcePage = getSpeedBinbInstance().content?.page?.[page - 1];
+  if (!sourcePage?.image) {
+    throw new Error(`Source page ${page} is unavailable`);
+  }
+  return sourcePage;
+}
+
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = globalThis.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(new Error(`${label} timeout (${timeoutMs}ms)`));
+    }, timeoutMs);
+
+    void promise
+      .then((value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        globalThis.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+type RetryAsyncOptions = {
+  delaysMs: number[];
+  shouldRetry: (error: unknown) => boolean;
+  onRetry?: (attempt: number, error: unknown) => void | Promise<void>;
+};
+
+export async function retryAsync<T>(
+  operation: () => Promise<T>,
+  options: RetryAsyncOptions,
+): Promise<T> {
+  const delays = options.delaysMs;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= delays.length || !options.shouldRetry(error)) {
+        throw error;
+      }
+      await options.onRetry?.(attempt + 1, error);
+      await delay(delays[attempt]);
+    }
+  }
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+  const out = new Array<R>(items.length);
+  const limit = Math.max(1, Number.isFinite(concurrency) ? Math.floor(concurrency) : 1);
+  let cursor = 0;
+  const run = async (): Promise<void> => {
+    while (true) {
+      const idx = cursor;
+      cursor += 1;
+      if (idx >= items.length) {
+        return;
+      }
+      out[idx] = await worker(items[idx], idx);
+    }
+  };
+  const runners: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(limit, items.length); i += 1) {
+    runners.push(run());
+  }
+  await Promise.all(runners);
+  return out;
+}
+
+async function waitFor<T>(label: string, factory: () => T | null | undefined): Promise<T> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
+    const value = factory();
+    if (value) {
+      return value;
+    }
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function loadSourceImage(src: string): Promise<HTMLImageElement> {
+  const img = new Image();
+  const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load source image: ${src}`));
+    img.src = src;
+  });
+  try {
+    return await withTimeout(loadPromise, REQUEST_TIMEOUT_MS, "image load");
+  } catch (error) {
+    img.onload = null;
+    img.onerror = null;
+    img.src = "";
+    throw error;
+  }
 }
 
 async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -215,45 +260,7 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-function getSpeedBinbInstance(): SpeedBinbInstance {
-  const speedBinb = getYanmagaWindow().SpeedBinb;
-  if (!speedBinb?.getInstance) {
-    throw new Error("SpeedBinb.getInstance is unavailable");
-  }
-
-  return speedBinb.getInstance("content");
-}
-
-function getBinbContent(): BinbContentLike {
-  const content = getSpeedBinbInstance().Ii?.Zt?.fu;
-  if (!content) {
-    throw new Error("Binb content internals are unavailable");
-  }
-  return content;
-}
-
-function getSourcePage(page: number): SpeedBinbPage {
-  const content = getSpeedBinbInstance().content;
-  const sourcePage = content?.page?.[page - 1];
-  if (!sourcePage?.image) {
-    throw new Error(`Source page ${page} is unavailable`);
-  }
-  return sourcePage;
-}
-
-async function loadSourceImage(src: string): Promise<HTMLImageElement> {
-  return await new Promise((resolve, reject) => {
-    const img = new Image();
-    // Firefox fails this image request with `anonymous`, but succeeds with credentials.
-    img.crossOrigin = "use-credentials";
-    img.referrerPolicy = "strict-origin-when-cross-origin";
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load source image: ${src}`));
-    img.src = src;
-  });
-}
-
-async function capturePageFromSource(page: number): Promise<CaptureResult> {
+async function capturePage(page: number): Promise<CaptureResult> {
   const sourcePage = getSourcePage(page);
   const binbContent = getBinbContent();
   const sourceUrl = resolveBinbSourceUrl(binbContent, sourcePage.image);
@@ -268,7 +275,6 @@ async function capturePageFromSource(page: number): Promise<CaptureResult> {
   }
 
   const plan = buildDrawPlanFromDescramble(descramble);
-
   const canvas = document.createElement("canvas");
   canvas.width = plan.width;
   canvas.height = plan.height;
@@ -299,8 +305,19 @@ async function capturePageFromSource(page: number): Promise<CaptureResult> {
   };
 }
 
-async function capturePage(page: number): Promise<CaptureResult> {
-  return await capturePageFromSource(page);
+function shouldRetryCapture(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /timeout|network|Failed to load source image/i.test(message);
+}
+
+async function capturePageWithRetry(page: number): Promise<CaptureResult> {
+  return await retryAsync(() => capturePage(page), {
+    delaysMs: RETRY_DELAYS_MS,
+    shouldRetry: shouldRetryCapture,
+    onRetry: (attempt, error) => {
+      log(`retry page ${page} attempt ${attempt}`, error);
+    },
+  });
 }
 
 async function zipFilesAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
@@ -324,7 +341,52 @@ function downloadBlob(blob: Blob, fileName: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function getSeriesTitle(): string {
+function buildArchiveBaseName(documentTitle: string): string {
+  return documentTitle.split("|")[0]?.trim() || "cmoa";
+}
+
+export function formatCaptureProgress(done: number, total: number): string {
+  return `capturing ${done}/${Math.max(1, total)}`;
+}
+
+export function formatZipProgress(): string {
+  return "zipping...";
+}
+
+function buildDrawPlanFromDescramble(result: {
+  width: number;
+  height: number;
+  transfers: Array<{
+    index: number;
+    coords: Array<{
+      xsrc: number;
+      ysrc: number;
+      width: number;
+      height: number;
+      xdest: number;
+      ydest: number;
+    }>;
+  }>;
+}): {
+  width: number;
+  height: number;
+  draws: Array<{
+    xsrc: number;
+    ysrc: number;
+    width: number;
+    height: number;
+    xdest: number;
+    ydest: number;
+  }>;
+} {
+  return {
+    width: result.width,
+    height: result.height,
+    draws: result.transfers.flatMap((transfer) => transfer.coords),
+  };
+}
+
+function getArchiveBaseName(): string {
   return sanitizeFilePart(buildArchiveBaseName(document.title));
 }
 
@@ -336,7 +398,7 @@ async function createZip(results: CaptureResult[]): Promise<{ blob: Blob; fileNa
 
   const from = results[0]?.page ?? 1;
   const to = results[results.length - 1]?.page ?? from;
-  const fileName = `${getSeriesTitle()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
+  const fileName = `${getArchiveBaseName()}_${String(from).padStart(4, "0")}-${String(to).padStart(4, "0")}.zip`;
   const zipped = await zipFilesAsync(files);
   return {
     blob: new Blob([bytesToBlobPart(zipped)], { type: ZIP_MIME }),
@@ -351,14 +413,18 @@ async function captureRange(options: CaptureRangeOptions): Promise<CaptureSummar
   const to = Math.max(1, Math.min(Math.max(options.from, options.to), endPage));
   const downloadZip = options.downloadZip ?? true;
   const total = to - from + 1;
-  const results: CaptureResult[] = [];
+  const pages = Array.from({ length: total }, (_unused, idx) => from + idx);
+  let completed = 0;
 
   options.onProgress?.(formatCaptureProgress(0, total));
-  for (let page = from; page <= to; page += 1) {
-    results.push(await capturePage(page));
-    options.onProgress?.(formatCaptureProgress(results.length, total));
+  const results = await mapWithConcurrency(pages, CAPTURE_CONCURRENCY, async (page) => {
+    const result = await capturePageWithRetry(page);
+    completed += 1;
+    options.onProgress?.(formatCaptureProgress(completed, total));
     await delay(50);
-  }
+    return result;
+  });
+  results.sort((a, b) => a.page - b.page);
 
   const summary: CaptureSummary = {
     from,
@@ -397,9 +463,7 @@ function mountPanel(): void {
     return;
   }
 
-  const reader = getReader();
-  const endPage = reader.currentPageInfo?.endPageNumber ?? 1;
-
+  const endPage = getReader().currentPageInfo?.endPageNumber ?? 1;
   const panel = document.createElement("div");
   panel.id = PANEL_ID;
   panel.style.cssText = [
@@ -466,27 +530,28 @@ function mountPanel(): void {
 }
 
 function init(): void {
-  getYanmagaWindow().__yanmagaCapture__ = { captureRange };
+  getTargetWindow().__mosaiComAntiLite__ = { captureRange };
 
   const timer = window.setInterval(() => {
-    const probe = getReaderProbe();
-    log("init probe", probe.status);
+    const reader = getTargetWindow().__sreaderFunc__;
+    const endPageNumber = reader?.currentPageInfo?.endPageNumber ?? null;
+    log("probe", { readyState: document.readyState, endPageNumber });
 
-    if (!probe.reader) {
+    if (!reader || !endPageNumber || !document.body) {
       return;
     }
-    if (!probe.endPageNumber || probe.endPageNumber <= 0) {
-      return;
-    }
-    if (!document.body) {
-      return;
-    }
+
     window.clearInterval(timer);
     mountPanel();
-    log("ready", probe.status);
+    log("ready", endPageNumber);
   }, 250);
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  init();
+  void waitFor("reader page count", () => {
+    const endPageNumber = getTargetWindow().__sreaderFunc__?.currentPageInfo?.endPageNumber ?? null;
+    return endPageNumber && endPageNumber > 0 ? endPageNumber : null;
+  })
+    .then(() => init())
+    .catch((error) => console.error("[MosaiComAntiLite] init failed", error));
 }

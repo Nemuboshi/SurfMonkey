@@ -1,7 +1,7 @@
 ﻿import { type Zippable, zipSync } from "fflate";
 import { saveAs } from "file-saver";
 
-import { bytesToBlobPart } from "./blobParts";
+import { bytesToBlobPart } from "../shared/blobParts";
 
 type SReaderContentItem = {
   SubTitle: string;

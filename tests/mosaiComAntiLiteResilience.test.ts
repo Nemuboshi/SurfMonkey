@@ -1,7 +1,11 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mapWithConcurrency, retryAsync, withTimeout } from "../src/MosaiComAntiLite.ts";
+import {
+  mapWithConcurrency,
+  retryAsync,
+  withTimeout,
+} from "../src/userscripts/MosaiComAntiLite.ts";
 
 test("withTimeout rejects when operation exceeds timeout", async () => {
   await assert.rejects(

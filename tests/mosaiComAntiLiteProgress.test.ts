@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatCaptureProgress, formatZipProgress } from "../src/MosaiComAntiLite.ts";
+import { formatCaptureProgress, formatZipProgress } from "../src/userscripts/MosaiComAntiLite.ts";
 
 test("formatCaptureProgress reports completed page count", () => {
   assert.equal(formatCaptureProgress(3, 12), "capturing 3/12");

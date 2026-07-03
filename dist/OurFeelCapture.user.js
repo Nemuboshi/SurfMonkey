@@ -550,17 +550,17 @@
     return Zip2;
   })();
 
-  // src/OurFeelCapture.ts
+  // src/userscripts/OurFeelCapture.ts
   var import_file_saver = __toESM(require_FileSaver_min());
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/OurFeelCapture.ts
+  // src/userscripts/OurFeelCapture.ts
   var PANEL_ID = "__ourfeel_capture_panel";
   var ZIP_MIME = "application/zip";
   var FETCH_CONCURRENCY = 4;

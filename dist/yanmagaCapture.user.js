@@ -858,7 +858,7 @@
     fn();
   };
 
-  // src/binbRuntime.ts
+  // src/shared/binbRuntime.ts
   function resolveBinbSourceUrl(content, image) {
     return content.getImageUrl(image.src);
   }
@@ -876,14 +876,14 @@
     return content.getImageDescrambleCoords(image.src, width, height);
   }
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/yanmagaCapture.ts
+  // src/userscripts/yanmagaCapture.ts
   function getYanmagaWindow() {
     return window;
   }

@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const _srcDir = path.join(cwd, "src");
   const distDir = path.join(cwd, "dist");
 
-  const allTsFiles = await fg("src/**/*.ts", { cwd, onlyFiles: true, dot: false });
+  const allTsFiles = await fg("src/userscripts/**/*.ts", { cwd, onlyFiles: true, dot: false });
   const tsFiles: string[] = [];
 
   for (const tsRel of allTsFiles) {
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   }
 
   if (tsFiles.length === 0) {
-    console.log("No TypeScript entry files found in src/. Nothing to build.");
+    console.log("No TypeScript entry files found in src/userscripts/. Nothing to build.");
     return;
   }
 
@@ -102,10 +102,10 @@ async function main(): Promise<void> {
       }
 
       const outRel = path.join(parsed.dir, `${parsed.name}.user.js`);
-      const outAbs = path.join(distDir, outRel.replace(/^src[\\/]/, ""));
+      const outAbs = path.join(distDir, outRel.replace(/^src[\\/]userscripts[\\/]/, ""));
       await fs.mkdir(path.dirname(outAbs), { recursive: true });
       await fs.writeFile(outAbs, `${header}\n\n${output.trimStart()}\n`, "utf8");
-      console.log(`Built: ${outRel.replace(/^src[\\/]/, "")}`);
+      console.log(`Built: ${outRel.replace(/^src[\\/]userscripts[\\/]/, "")}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${tsRel}: ${message}`);

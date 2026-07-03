@@ -1,7 +1,7 @@
 import { Zip, ZipPassThrough } from "fflate";
 import { saveAs } from "file-saver";
 
-import { bytesToBlobPart } from "./blobParts";
+import { bytesToBlobPart } from "../shared/blobParts";
 
 type RawPageEntry = {
   type?: string;

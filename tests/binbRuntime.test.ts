@@ -5,7 +5,7 @@ import {
   type BinbPageImageLike,
   resolveBinbDescramble,
   resolveBinbSourceUrl,
-} from "../src/binbRuntime.ts";
+} from "../src/shared/binbRuntime.ts";
 
 const sampleImage: BinbPageImageLike = {
   src: "images/page.jpg",

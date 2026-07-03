@@ -1,7 +1,7 @@
 import { Zip, ZipPassThrough } from "fflate";
 import { saveAs } from "file-saver";
 
-import { bytesToBlobPart, bytesToImageDataArray } from "./blobParts";
+import { bytesToBlobPart, bytesToImageDataArray } from "../shared/blobParts";
 
 type ReadingPage = {
   url: string;

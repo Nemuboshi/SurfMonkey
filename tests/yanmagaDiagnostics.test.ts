@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { summarizeReaderProbe } from "../src/yanmagaCapture.ts";
+import { summarizeReaderProbe } from "../src/userscripts/yanmagaCapture.ts";
 
 test("summarizeReaderProbe reports missing reader clearly", () => {
   assert.equal(

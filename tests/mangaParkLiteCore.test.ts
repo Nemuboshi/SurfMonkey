@@ -8,7 +8,7 @@ import {
   parseChapterIdFromChapterRoute,
   parseChapterIdFromPath,
   parseChapterIdFromUrl,
-} from "../src/MangaParkLite.ts";
+} from "../src/userscripts/MangaParkLite.ts";
 
 test("parseChapterIdFromPath extracts chapter id from reader path", () => {
   assert.equal(parseChapterIdFromPath("/title/104555/795806"), "795806");

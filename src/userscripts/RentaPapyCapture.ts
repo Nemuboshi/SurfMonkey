@@ -1,6 +1,6 @@
 import { zip } from "fflate";
 
-import { bytesToBlobPart } from "./blobParts";
+import { bytesToBlobPart } from "../shared/blobParts";
 
 type PapyImageEntry = {
   comp?: boolean;

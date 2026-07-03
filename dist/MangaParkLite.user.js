@@ -861,14 +861,14 @@
     fn();
   };
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/MangaParkLite.ts
+  // src/userscripts/MangaParkLite.ts
   var PANEL_ID = "__manga_park_lite_panel";
   var ZIP_MIME = "application/zip";
   var REQUEST_TIMEOUT_MS = 3e4;

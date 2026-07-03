@@ -858,7 +858,7 @@
     fn();
   };
 
-  // src/binbRuntime.ts
+  // src/shared/binbRuntime.ts
   function resolveBinbSourceUrl(content, image) {
     return content.getImageUrl(image.src);
   }
@@ -876,14 +876,14 @@
     return content.getImageDescrambleCoords(image.src, width, height);
   }
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/MosaiComAntiLite.ts
+  // src/userscripts/MosaiComAntiLite.ts
   var PANEL_ID = "__mosaicom_anti_lite_panel";
   var ZIP_MIME = "application/zip";
   var IMAGE_MIME = "image/png";

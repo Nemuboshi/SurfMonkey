@@ -858,14 +858,14 @@
     fn();
   };
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/RentaPapyCapture.ts
+  // src/userscripts/RentaPapyCapture.ts
   var IMAGE_EXT = "png";
   var IMAGE_MIME = "image/png";
   var PANEL_ID = "__renta_papy_capture_panel";

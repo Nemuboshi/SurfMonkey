@@ -549,17 +549,17 @@
     return Zip2;
   })();
 
-  // src/MosaiComAnti.ts
+  // src/userscripts/MosaiComAnti.ts
   var import_file_saver = __toESM(require_FileSaver_min());
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/MosaiComAnti.ts
+  // src/userscripts/MosaiComAnti.ts
   var CONFIG = {
     // Default to low quality to match common reader fallback behavior.
     useHighQualityImage: false,

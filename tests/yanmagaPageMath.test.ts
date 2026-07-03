@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildArchiveBaseName, buildDrawPlanFromDescramble } from "../src/yanmagaCapture.ts";
+import {
+  buildArchiveBaseName,
+  buildDrawPlanFromDescramble,
+} from "../src/userscripts/yanmagaCapture.ts";
 
 test("buildArchiveBaseName prefers the current page title", () => {
   assert.equal(

@@ -819,17 +819,17 @@
     return out;
   }
 
-  // src/pageStitcher.ts
+  // src/userscripts/pageStitcher.ts
   var import_file_saver = __toESM(require_FileSaver_min());
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/pageStitcher.ts
+  // src/userscripts/pageStitcher.ts
   (() => {
     const BATCH_SIZE = 50;
     const TIMEOUT = 3e4;

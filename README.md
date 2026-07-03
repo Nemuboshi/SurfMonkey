@@ -2,8 +2,8 @@
 
 This project builds userscripts from paired source files:
 
-- `src/<name>.ts`: script source
-- `src/<name>.yaml`: userscript metadata header
+- `src/userscripts/<name>.ts`: script source
+- `src/userscripts/<name>.yaml`: userscript metadata header
 
 Build output:
 

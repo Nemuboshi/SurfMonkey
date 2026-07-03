@@ -859,14 +859,14 @@
     fn();
   };
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/HontoClipStudioEpubDownloader.ts
+  // src/userscripts/HontoClipStudioEpubDownloader.ts
   var PANEL_ID = "__honto_clipstudio_epub_downloader_panel";
   var REQUEST_TIMEOUT_MS = 3e4;
   var EPUB_MEDIA_TYPE = "application/epub+zip";

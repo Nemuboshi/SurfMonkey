@@ -13,7 +13,7 @@
 
 "use strict";
 (() => {
-  // src/harborMateAria2.ts
+  // src/userscripts/harborMateAria2.ts
   (() => {
     const DEFAULTS = {
       username: "",

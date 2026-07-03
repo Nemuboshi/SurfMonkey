@@ -858,14 +858,14 @@
     fn();
   };
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/ComicBoostPublus.ts
+  // src/userscripts/ComicBoostPublus.ts
   var DEFAULT_RENDER_VIEWPORT = { width: 2048, height: 1456 };
   var EXPORT_EXTENSION = "png";
   var PANEL_ID = "__comic_boost_publus_panel";
