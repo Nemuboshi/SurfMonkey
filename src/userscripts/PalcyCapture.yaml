@@ -1,0 +1,9 @@
+name: PalcyCapture
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Download Palcy comic preview pages as PNG ZIP archives.
+match:
+  - https://palcy.jp/comics/*
+grant:
+  - none
+run-at: document-idle

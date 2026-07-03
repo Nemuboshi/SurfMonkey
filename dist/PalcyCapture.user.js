@@ -1,10 +1,9 @@
 // ==UserScript==
-// @name PxixvComicrown
+// @name PalcyCapture
 // @namespace github.com/Nemuboshi/SurfMonkey
 // @version 1.0.0
-// @description Download full Pixiv Comic episodes from works pages or viewer pages as ZIP archives.
-// @match https://comic.pixiv.net/works/*
-// @match https://comic.pixiv.net/viewer/stories/*
+// @description Download Palcy comic preview pages as PNG ZIP archives.
+// @match https://palcy.jp/comics/*
 // @grant none
 // @run-at document-idle
 // ==/UserScript==
@@ -551,7 +550,7 @@
     return Zip2;
   })();
 
-  // src/userscripts/PxixvComicrown.ts
+  // src/userscripts/PalcyCapture.ts
   var import_file_saver = __toESM(require_FileSaver_min());
 
   // src/shared/blobParts.ts
@@ -653,15 +652,13 @@
     return out;
   }
 
-  // src/userscripts/PxixvComicrown.ts
-  var PANEL_ID = "__pxixv_comicrown_panel";
+  // src/userscripts/PalcyCapture.ts
+  var PANEL_ID = "__palcy_capture_panel";
   var ZIP_MIME = "application/zip";
   var FETCH_CONCURRENCY = 4;
+  var comicCache = null;
   function log(...args) {
-    console.log("[PxixvComicrown]", ...args);
-  }
-  function delay(ms) {
-    return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+    console.log("[PalcyCapture]", ...args);
   }
   function pad(value, length = 3) {
     return String(value).padStart(length, "0");
@@ -674,27 +671,37 @@
       }
       return char;
     }).join("");
-    return cleaned.replace(/\s+/g, " ").trim() || "pixiv-comic";
+    return cleaned.replace(/\s+/g, " ").trim() || "palcy";
   }
-  function formatClientTime(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    const seconds = String(date.getSeconds()).padStart(2, "0");
-    const offsetMinutes = -date.getTimezoneOffset();
-    const sign = offsetMinutes >= 0 ? "+" : "-";
-    const offsetHours = String(Math.floor(Math.abs(offsetMinutes) / 60)).padStart(2, "0");
-    const offsetRemainder = String(Math.abs(offsetMinutes) % 60).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetRemainder}`;
+  function parseComicIdFromPath(pathname) {
+    var _a2, _b2;
+    return (_b2 = (_a2 = pathname.match(/^\/comics\/(\d+)(?:\/)?$/)) == null ? void 0 : _a2[1]) != null ? _b2 : null;
   }
-  async function buildClientHeaders(salt) {
-    const time = formatClientTime(/* @__PURE__ */ new Date());
-    const bytes = new TextEncoder().encode(`${time}${salt}`);
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-    const hash = Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
-    return { time, hash };
+  function parseComicIdFromUrl(urlLike) {
+    var _a2;
+    try {
+      const base = typeof window !== "undefined" && ((_a2 = window.location) == null ? void 0 : _a2.origin) ? window.location.origin : "https://palcy.jp";
+      const parsed = new URL(urlLike, base);
+      return parseComicIdFromPath(parsed.pathname);
+    } catch (e) {
+      return null;
+    }
+  }
+  function normalizeCapturePages(comic) {
+    return comic.pages.map((page) => {
+      var _a2;
+      if (!((_a2 = page.image) == null ? void 0 : _a2.url)) {
+        throw new Error(`Page ${page.page} image is unavailable`);
+      }
+      return {
+        number: page.page,
+        url: page.image.url,
+        width: page.image.width,
+        height: page.image.height,
+        gridSize: page.image.gridSize,
+        key: page.image.decryptionKey
+      };
+    });
   }
   async function mapWithConcurrency(items, concurrency, worker) {
     if (items.length === 0) {
@@ -713,179 +720,8 @@
         out[index] = await worker(items[index], index);
       }
     };
-    await Promise.all(
-      Array.from({ length: Math.min(limit, items.length) }, () => {
-        return run();
-      })
-    );
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
     return out;
-  }
-  function parseEpisodeIdFromViewerPath(pathLike) {
-    var _a2, _b2;
-    try {
-      const parsed = new URL(pathLike, window.location.origin);
-      return (_b2 = (_a2 = parsed.pathname.match(/^\/viewer\/stories\/(\d+)/)) == null ? void 0 : _a2[1]) != null ? _b2 : null;
-    } catch (e) {
-      return null;
-    }
-  }
-  function buildArchiveName(workTitle, episodeTitle, from, to) {
-    const work = sanitizeFilePart(workTitle);
-    const episode = sanitizeFilePart(episodeTitle);
-    return `${work} - ${episode} - p${pad(from)}-p${pad(to)}.zip`;
-  }
-  function createNumberInput(value) {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.min = "1";
-    input.value = value;
-    input.style.cssText = [
-      "width: 64px",
-      "padding: 4px 6px",
-      "border: 1px solid rgba(255,255,255,0.25)",
-      "border-radius: 6px",
-      "background: rgba(255,255,255,0.14)",
-      "color: #fff"
-    ].join(";");
-    return input;
-  }
-  function createButton(label) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    button.style.cssText = [
-      "padding: 6px 10px",
-      "border: 0",
-      "border-radius: 6px",
-      "background: #6ad3a5",
-      "color: #111",
-      "font-weight: 700",
-      "cursor: pointer"
-    ].join(";");
-    return button;
-  }
-  function createViewerPanel() {
-    const panel = document.createElement("div");
-    panel.id = PANEL_ID;
-    panel.style.cssText = [
-      "position: fixed",
-      "right: 16px",
-      "bottom: 16px",
-      "z-index: 2147483647",
-      "display: flex",
-      "flex-direction: column",
-      "align-items: stretch",
-      "gap: 10px",
-      "min-width: 220px",
-      "padding: 12px",
-      "border: 1px solid rgba(255,255,255,0.14)",
-      "border-radius: 14px",
-      "background: rgba(12,14,18,0.86)",
-      "backdrop-filter: blur(10px)",
-      "box-shadow: 0 12px 36px rgba(0,0,0,0.34)",
-      "color: #fff",
-      "font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace"
-    ].join(";");
-    const title = document.createElement("span");
-    title.style.fontWeight = "700";
-    title.textContent = "pixiv";
-    const header = document.createElement("div");
-    header.style.cssText = [
-      "display:flex",
-      "align-items:center",
-      "justify-content:space-between",
-      "gap:10px"
-    ].join(";");
-    const badge = document.createElement("span");
-    badge.textContent = "PxixvComicrown";
-    badge.style.cssText = [
-      "padding:2px 7px",
-      "border-radius:999px",
-      "background: rgba(106,211,165,0.18)",
-      "color:#9af0c5",
-      "font-size:11px",
-      "font-weight:700"
-    ].join(";");
-    header.append(title, badge);
-    const fromInput = createNumberInput("1");
-    const toInput = createNumberInput("1");
-    const rangeRow = document.createElement("div");
-    rangeRow.style.cssText = ["display:flex", "align-items:center", "gap:8px"].join(";");
-    const rangeLabel = document.createElement("span");
-    rangeLabel.textContent = "pages";
-    rangeLabel.style.cssText = "opacity:0.78;min-width:40px;";
-    const separator = document.createElement("span");
-    separator.textContent = "~";
-    separator.style.cssText = "opacity:0.66;";
-    rangeRow.append(rangeLabel, fromInput, separator, toInput);
-    const button = createButton("capture zip");
-    button.style.width = "100%";
-    const status = document.createElement("span");
-    status.textContent = "ready";
-    status.style.cssText = [
-      "display:block",
-      "min-height:14px",
-      "color: rgba(255,255,255,0.76)",
-      "white-space: nowrap",
-      "overflow: hidden",
-      "text-overflow: ellipsis"
-    ].join(";");
-    panel.append(header, rangeRow, button, status);
-    return { panel, title, fromInput, toInput, button, status };
-  }
-  async function fetchViewerBootstrap(viewerPath) {
-    var _a2, _b2, _c, _d;
-    const viewerUrl = new URL(viewerPath, window.location.origin).toString();
-    const response = await fetch(viewerUrl, {
-      credentials: "include",
-      headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`viewer bootstrap failed (${response.status})`);
-    }
-    const html = await response.text();
-    const nextDataMatch = html.match(
-      /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/
-    );
-    if (!(nextDataMatch == null ? void 0 : nextDataMatch[1])) {
-      throw new Error("viewer next data is missing");
-    }
-    let nextData;
-    try {
-      nextData = JSON.parse(nextDataMatch[1]);
-    } catch (e) {
-      throw new Error("viewer next data is invalid");
-    }
-    const salt = (_b2 = (_a2 = nextData.props) == null ? void 0 : _a2.pageProps) == null ? void 0 : _b2.salt;
-    const episodeId = (_d = (_c = nextData.props) == null ? void 0 : _c.pageProps) == null ? void 0 : _d.id;
-    if (!salt || episodeId === void 0 || episodeId === null) {
-      throw new Error("viewer metadata is missing");
-    }
-    return { salt, episodeId: String(episodeId) };
-  }
-  async function fetchEpisodeMetadata(episodeId, salt) {
-    var _a2;
-    const client = await buildClientHeaders(salt);
-    const response = await fetch(`/api/app/episodes/${episodeId}/read_v4`, {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Client-Hash": client.hash,
-        "X-Client-Time": client.time,
-        "X-Requested-With": "pixivcomic"
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`episode api failed (${response.status})`);
-    }
-    const payload = await response.json();
-    const episode = (_a2 = payload.data) == null ? void 0 : _a2.reading_episode;
-    if (!episode) {
-      throw new Error("episode payload is missing");
-    }
-    return episode;
   }
   async function blobToBitmap(blob) {
     return await createImageBitmap(blob);
@@ -901,14 +737,40 @@
       }, "image/png");
     });
   }
-  async function downloadAndDescramblePage(page, pageNumber) {
+  function buildArchiveName(comic, from, to) {
+    return `${sanitizeFilePart(comic.title)} - p${pad(from)}-p${pad(to)}.zip`;
+  }
+  async function fetchComic(comicId) {
+    if ((comicCache == null ? void 0 : comicCache.comicId) === comicId) {
+      return comicCache;
+    }
+    const response = await fetch(`/api/v2/comics/${comicId}.json`, {
+      credentials: "include",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`comic api failed (${response.status})`);
+    }
+    const comic = await response.json();
+    if (!comic.comicId || !comic.title || !Array.isArray(comic.pages)) {
+      throw new Error("comic payload is invalid");
+    }
+    if (comic.pages.length === 0) {
+      throw new Error("comic has no preview pages");
+    }
+    comicCache = comic;
+    return comic;
+  }
+  async function downloadPage(page) {
     const response = await fetch(page.url, {
       headers: page.key ? {
         "X-Cobalt-Thumber-Parameter-GridShuffle-Key": page.key
       } : void 0
     });
     if (!response.ok) {
-      throw new Error(`page fetch failed (${response.status})`);
+      throw new Error(`page ${page.number} fetch failed (${response.status})`);
     }
     const blob = await response.blob();
     const bitmap = await blobToBitmap(blob);
@@ -922,14 +784,14 @@
     }
     try {
       context.drawImage(bitmap, 0, 0);
-      if (page.key) {
+      if (page.key && page.gridSize) {
         const imageData = context.getImageData(0, 0, page.width, page.height);
         const descrambled = await descrambleCobaltGridImageData(
           imageData.data,
           page.width,
           page.height,
-          page.gridsize,
-          page.gridsize,
+          page.gridSize,
+          page.gridSize,
           page.key
         );
         context.putImageData(
@@ -940,7 +802,7 @@
       }
       const pngBlob = await canvasToPngBlob(canvas);
       return {
-        name: `${pad(pageNumber)}.png`,
+        name: `${pad(page.number)}.png`,
         bytes: new Uint8Array(await pngBlob.arrayBuffer())
       };
     } finally {
@@ -949,17 +811,9 @@
       canvas.height = 1;
     }
   }
-  async function buildZipBlob(episode, from, to, onProgress) {
-    var _a2;
-    const targetPages = episode.pages.slice(from - 1, to);
-    const files = await mapWithConcurrency(targetPages, FETCH_CONCURRENCY, async (page, index) => {
-      const current = from + index;
-      onProgress == null ? void 0 : onProgress(`page ${current}/${to}`);
-      return await downloadAndDescramblePage(page, current);
-    });
-    onProgress == null ? void 0 : onProgress("zipping");
+  async function zipPages(files) {
     const chunks = [];
-    const zipBlob = await new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const zip = new Zip((error, data, final) => {
         if (error) {
           reject(error);
@@ -985,125 +839,152 @@
         reject(error);
       }
     });
-    const episodeTitle = ((_a2 = episode.numbering_title) == null ? void 0 : _a2.trim()) || episode.title;
-    return {
-      blob: zipBlob,
-      fileName: buildArchiveName(episode.work_title, episodeTitle, from, to)
-    };
   }
-  async function downloadEpisodeRange(options) {
-    var _a2, _b2, _c, _d;
-    (_a2 = options.onProgress) == null ? void 0 : _a2.call(options, "loading episode");
-    const bootstrap = await fetchViewerBootstrap(options.viewerPath);
-    const episode = await fetchEpisodeMetadata(bootstrap.episodeId, bootstrap.salt);
-    const pageCount = episode.pages.length;
-    const from = Math.max(1, Math.min((_b2 = options.from) != null ? _b2 : 1, pageCount));
-    const to = Math.max(from, Math.min((_c = options.to) != null ? _c : pageCount, pageCount));
-    const zipResult = await buildZipBlob(episode, from, to, options.onProgress);
-    (0, import_file_saver.saveAs)(zipResult.blob, zipResult.fileName);
-    (_d = options.onProgress) == null ? void 0 : _d.call(options, `saved ${zipResult.fileName}`);
+  async function captureRange(options = {}) {
+    var _a2, _b2, _c, _d, _e, _f, _g, _h;
+    const comicId = (_a2 = options.comicId) != null ? _a2 : parseComicIdFromPath(window.location.pathname);
+    if (!comicId) {
+      throw new Error("Palcy comic id is unavailable");
+    }
+    (_b2 = options.onProgress) == null ? void 0 : _b2.call(options, "loading comic");
+    const comic = await fetchComic(comicId);
+    const pages = normalizeCapturePages(comic);
+    const pageCount = pages.length;
+    const from = Math.max(1, Math.min((_c = options.from) != null ? _c : 1, (_d = options.to) != null ? _d : pageCount, pageCount));
+    const to = Math.max(
+      from,
+      Math.min(Math.max((_e = options.from) != null ? _e : pageCount, (_f = options.to) != null ? _f : pageCount), pageCount)
+    );
+    const targetPages = pages.slice(from - 1, to);
+    let completed = 0;
+    const files = await mapWithConcurrency(targetPages, FETCH_CONCURRENCY, async (page) => {
+      var _a3;
+      const downloaded = await downloadPage(page);
+      completed += 1;
+      (_a3 = options.onProgress) == null ? void 0 : _a3.call(options, `page ${completed}/${targetPages.length}`);
+      return downloaded;
+    });
+    (_g = options.onProgress) == null ? void 0 : _g.call(options, "zipping");
+    const blob = await zipPages(files);
+    const fileName = buildArchiveName(comic, from, to);
+    (0, import_file_saver.saveAs)(blob, fileName);
+    (_h = options.onProgress) == null ? void 0 : _h.call(options, `saved ${fileName}`);
+    return { fileName, from, to, pageCount };
   }
-  function installViewerPanel() {
-    var _a2, _b2, _c;
+  function createNumberInput(value) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.value = value;
+    input.style.cssText = [
+      "width:64px",
+      "padding:4px 6px",
+      "border:1px solid rgba(255,255,255,0.25)",
+      "border-radius:6px",
+      "background:rgba(255,255,255,0.14)",
+      "color:#fff"
+    ].join(";");
+    return input;
+  }
+  function createPanel() {
+    const panel = document.createElement("div");
+    panel.id = PANEL_ID;
+    panel.style.cssText = [
+      "position:fixed",
+      "right:16px",
+      "bottom:16px",
+      "z-index:2147483647",
+      "display:flex",
+      "flex-direction:column",
+      "gap:10px",
+      "min-width:230px",
+      "padding:12px",
+      "border:1px solid rgba(255,255,255,0.14)",
+      "border-radius:12px",
+      "background:rgba(12,14,18,0.86)",
+      "backdrop-filter:blur(10px)",
+      "box-shadow:0 12px 36px rgba(0,0,0,0.34)",
+      "color:#fff",
+      "font:12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace"
+    ].join(";");
+    const title = document.createElement("span");
+    title.textContent = "Palcy";
+    title.style.cssText = "font-weight:700;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    const rangeRow = document.createElement("div");
+    rangeRow.style.cssText = "display:flex;align-items:center;gap:8px;";
+    const fromInput = createNumberInput("1");
+    const toInput = createNumberInput("1");
+    rangeRow.append("pages", fromInput, "~", toInput);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "capture zip";
+    button.style.cssText = [
+      "padding:6px 10px",
+      "border:0",
+      "border-radius:6px",
+      "background:#6ad3a5",
+      "color:#111",
+      "font-weight:700",
+      "cursor:pointer"
+    ].join(";");
+    const status = document.createElement("span");
+    status.textContent = "loading";
+    status.style.cssText = [
+      "display:block",
+      "min-height:14px",
+      "color:rgba(255,255,255,0.76)",
+      "white-space:nowrap",
+      "overflow:hidden",
+      "text-overflow:ellipsis"
+    ].join(";");
+    panel.append(title, rangeRow, button, status);
+    return { panel, title, fromInput, toInput, button, status };
+  }
+  async function installPanel() {
     if (document.getElementById(PANEL_ID) || !document.body) {
       return;
     }
-    const panel = createViewerPanel();
-    document.body.appendChild(panel.panel);
-    const currentId = parseEpisodeIdFromViewerPath(window.location.pathname);
-    const salt = (_c = (_b2 = (_a2 = window.__NEXT_DATA__) == null ? void 0 : _a2.props) == null ? void 0 : _b2.pageProps) == null ? void 0 : _c.salt;
-    if (currentId && salt) {
-      void fetchEpisodeMetadata(currentId, salt).then((episode) => {
-        var _a3;
-        const pageCount = episode.pages.length;
-        panel.title.textContent = ((_a3 = episode.numbering_title) == null ? void 0 : _a3.trim()) || episode.title;
-        panel.fromInput.value = "1";
-        panel.toInput.value = String(pageCount);
-        panel.status.textContent = `ready 1/${pageCount}`;
-      }).catch((error) => {
-        panel.status.textContent = error instanceof Error ? error.message : String(error);
-      });
+    const comicId = parseComicIdFromPath(window.location.pathname);
+    if (!comicId) {
+      return;
     }
-    panel.button.onclick = async () => {
-      const from = Number.parseInt(panel.fromInput.value || "1", 10);
-      const to = Number.parseInt(panel.toInput.value || panel.fromInput.value || "1", 10);
-      panel.button.disabled = true;
+    const refs = createPanel();
+    document.body.appendChild(refs.panel);
+    try {
+      const comic = await fetchComic(comicId);
+      const pageCount = comic.pages.length;
+      refs.title.textContent = comic.title;
+      refs.fromInput.value = "1";
+      refs.toInput.value = String(pageCount);
+      refs.status.textContent = `ready 1/${pageCount}`;
+    } catch (error) {
+      refs.status.textContent = error instanceof Error ? error.message : String(error);
+    }
+    refs.button.onclick = async () => {
+      const from = Number.parseInt(refs.fromInput.value || "1", 10);
+      const to = Number.parseInt(refs.toInput.value || refs.fromInput.value || "1", 10);
+      refs.button.disabled = true;
       try {
-        await downloadEpisodeRange({
-          viewerPath: window.location.pathname,
+        await captureRange({
+          comicId,
           from,
           to,
           onProgress: (status) => {
-            panel.status.textContent = status;
+            refs.status.textContent = status;
           }
         });
       } catch (error) {
-        panel.status.textContent = error instanceof Error ? error.message : String(error);
+        refs.status.textContent = error instanceof Error ? error.message : String(error);
         console.error(error);
       } finally {
-        panel.button.disabled = false;
+        refs.button.disabled = false;
       }
     };
   }
-  function enhanceWorksPage() {
-    var _a2;
-    const links = document.querySelectorAll('a[href^="/viewer/stories/"]');
-    for (const link of links) {
-      if (link.dataset.pxixvComicrownReady === "true") {
-        continue;
-      }
-      const viewerPath = link.getAttribute("href");
-      if (!viewerPath) {
-        continue;
-      }
-      link.dataset.pxixvComicrownReady = "true";
-      const wrapper = document.createElement("div");
-      wrapper.dataset.pxixvComicrownRow = "true";
-      wrapper.style.cssText = "display:flex;align-items:center;gap:8px;width:100%;";
-      (_a2 = link.parentNode) == null ? void 0 : _a2.insertBefore(wrapper, link);
-      wrapper.appendChild(link);
-      link.style.flex = "1 1 auto";
-      link.style.minWidth = "0";
-      const button = createButton("zip");
-      button.style.padding = "4px 8px";
-      button.style.fontSize = "12px";
-      button.onclick = async (event) => {
-        var _a3;
-        event.preventDefault();
-        event.stopPropagation();
-        const originalText = (_a3 = button.textContent) != null ? _a3 : "zip";
-        button.disabled = true;
-        button.textContent = "run";
-        try {
-          await downloadEpisodeRange({
-            viewerPath,
-            onProgress: (status) => {
-              button.textContent = status.startsWith("saved") ? "done" : status.replace(/^(.{0,10}).*$/, "$1");
-            }
-          });
-          button.textContent = "done";
-          await delay(1500);
-        } catch (error) {
-          button.textContent = "fail";
-          console.error(error);
-          await delay(2e3);
-        } finally {
-          button.disabled = false;
-          button.textContent = originalText;
-        }
-      };
-      wrapper.appendChild(button);
-    }
-  }
   function init() {
-    if (window.location.pathname.startsWith("/viewer/stories/")) {
-      installViewerPanel();
-      return;
-    }
-    if (window.location.pathname.startsWith("/works/")) {
-      enhanceWorksPage();
-      const observer = new MutationObserver(() => enhanceWorksPage());
-      observer.observe(document.documentElement, { childList: true, subtree: true });
+    window.__palcyCapture__ = { captureRange };
+    if (parseComicIdFromPath(window.location.pathname)) {
+      void installPanel();
     }
   }
   if (typeof window !== "undefined" && typeof document !== "undefined") {
