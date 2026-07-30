@@ -1,0 +1,10 @@
+name: Bslovey Capture
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Download B's-LOVEY viewer pages as a ZIP archive.
+match:
+  - https://bslovey.com/series/viewer/*/entry-*.html*
+  - https://www.bslovey.com/series/viewer/*/entry-*.html*
+grant:
+  - none
+run-at: document-idle
