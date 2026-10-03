@@ -1,0 +1,10 @@
+name: PopCash Tab Guard
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Blocks PopCash tabunder from hijacking the current tab.
+match:
+  - https://4horlover.com/*
+  - https://www.4horlover.com/*
+grant:
+  - none
+run-at: document-start

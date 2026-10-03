@@ -1,0 +1,10 @@
+name: 4horlover Age Gate Auto Pass
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Automatically fills and submits the 4horlover age gate.
+match:
+  - https://4horlover.com/*
+  - https://www.4horlover.com/*
+grant:
+  - none
+run-at: document-end

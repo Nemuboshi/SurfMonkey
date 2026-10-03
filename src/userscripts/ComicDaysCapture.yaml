@@ -1,0 +1,9 @@
+name: ComicDaysCapture
+namespace: https://comic-days.com
+version: 1.0.0
+description: Download readable Comic DAYS episode pages as ZIP archives with GigaViewer image reconstruction.
+match:
+  - https://comic-days.com/episode/*
+grant:
+  - none
+run-at: document-end
