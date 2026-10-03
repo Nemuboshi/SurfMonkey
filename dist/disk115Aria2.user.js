@@ -1007,7 +1007,14 @@
           <textarea class="setting-menu-input textarea-o headers-s" spellcheck="false"></textarea>
         </div>
       </div>
-      <div class="setting-menu-row">
+      <!-- TODO(extra-cookie): hidden because 115 download links are currently
+        self-authenticated (verified: HTTP 206 with no Cookie header at all), so
+        the field is dead weight for normal use. It exists as an escape hatch for
+        httpOnly cookies (acw_tc, UID, ...) that a userscript cannot read via
+        document.cookie, unlike the original extension's chrome.cookies API.
+        Re-show this row (remove the display:none below) if downloads start
+        failing with 403; the read/write logic for .extraCookie-s is kept intact. -->
+      <div class="setting-menu-row" style="display:none">
         <div class="setting-menu-name"><label class="setting-menu-label">\u989D\u5916 Cookie</label></div>
         <div class="setting-menu-value">
           <textarea class="setting-menu-input textarea-o extraCookie-s" spellcheck="false" placeholder="\u6D4F\u89C8\u5668\u8BFB\u4E0D\u5230 httpOnly cookie\uFF08\u5982 acw_tc\u3001UID\uFF09\uFF0C\u4E0B\u8F7D 403 \u65F6\u7F3A\u54EA\u4E2A\u586B\u54EA\u4E2A\uFF0C\u5F62\u5982 acw_tc=xxx; UID=xxx"></textarea>

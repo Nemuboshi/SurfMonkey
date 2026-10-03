@@ -967,7 +967,14 @@ export function secretDecode(str: string, key: number[]): string {
           <textarea class="setting-menu-input textarea-o headers-s" spellcheck="false"></textarea>
         </div>
       </div>
-      <div class="setting-menu-row">
+      <!-- TODO(extra-cookie): hidden because 115 download links are currently
+        self-authenticated (verified: HTTP 206 with no Cookie header at all), so
+        the field is dead weight for normal use. It exists as an escape hatch for
+        httpOnly cookies (acw_tc, UID, ...) that a userscript cannot read via
+        document.cookie, unlike the original extension's chrome.cookies API.
+        Re-show this row (remove the display:none below) if downloads start
+        failing with 403; the read/write logic for .extraCookie-s is kept intact. -->
+      <div class="setting-menu-row" style="display:none">
         <div class="setting-menu-name"><label class="setting-menu-label">额外 Cookie</label></div>
         <div class="setting-menu-value">
           <textarea class="setting-menu-input textarea-o extraCookie-s" spellcheck="false" placeholder="浏览器读不到 httpOnly cookie（如 acw_tc、UID），下载 403 时缺哪个填哪个，形如 acw_tc=xxx; UID=xxx"></textarea>
