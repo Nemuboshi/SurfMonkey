@@ -1,0 +1,15 @@
+# Normalize line endings so checkouts are byte-identical on every platform.
+# Without this, core.autocrlf=true rewrites LF -> CRLF on Windows checkouts,
+# which makes biome's format check fail on files that are clean in git.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary
