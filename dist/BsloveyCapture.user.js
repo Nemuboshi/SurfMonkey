@@ -551,17 +551,17 @@
     return Zip2;
   })();
 
-  // src/BsloveyCapture.ts
+  // src/userscripts/BsloveyCapture.ts
   var import_file_saver = __toESM(require_FileSaver_min());
 
-  // src/blobParts.ts
+  // src/shared/blobParts.ts
   function bytesToBlobPart(bytes) {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
   }
 
-  // src/BsloveyCapture.ts
+  // src/userscripts/BsloveyCapture.ts
   var PANEL_ID = "__bslovey_capture_panel";
   var ZIP_MIME = "application/zip";
   var FETCH_CONCURRENCY = 4;
@@ -641,7 +641,12 @@
   }
   function getSourceExtension(src) {
     var _a2, _b2;
-    const extension = (_b2 = (_a2 = new URL(src).pathname.match(/\.([a-z0-9]+)$/i)) == null ? void 0 : _a2[1]) == null ? void 0 : _b2.toLowerCase();
+    let extension;
+    try {
+      extension = (_b2 = (_a2 = new URL(src).pathname.match(/\.([a-z0-9]+)$/i)) == null ? void 0 : _a2[1]) == null ? void 0 : _b2.toLowerCase();
+    } catch (e) {
+      return "jpg";
+    }
     return extension === "jpeg" ? "jpg" : extension || "jpg";
   }
   function getOriginalImageAccept(extension) {
@@ -664,7 +669,12 @@
     return null;
   }
   function buildOriginalImageUrl(src, pageNumber) {
-    const url = new URL(src);
+    let url;
+    try {
+      url = new URL(src);
+    } catch (e) {
+      return src;
+    }
     url.searchParams.set("__bslovey_original", `${Date.now()}-${pageNumber}`);
     return url.href;
   }

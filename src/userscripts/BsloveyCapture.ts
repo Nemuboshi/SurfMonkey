@@ -1,7 +1,7 @@
 import { Zip, ZipPassThrough } from "fflate";
 import { saveAs } from "file-saver";
 
-import { bytesToBlobPart } from "./blobParts";
+import { bytesToBlobPart } from "../shared/blobParts";
 
 type ViewerPage = {
   src: string;
@@ -131,7 +131,12 @@ async function mapWithConcurrency<T, R>(
 }
 
 function getSourceExtension(src: string): string {
-  const extension = new URL(src).pathname.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  let extension: string | undefined;
+  try {
+    extension = new URL(src).pathname.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  } catch {
+    return "jpg";
+  }
   return extension === "jpeg" ? "jpg" : extension || "jpg";
 }
 
@@ -160,7 +165,12 @@ function detectImageExtension(bytes: Uint8Array): string | null {
 }
 
 function buildOriginalImageUrl(src: string, pageNumber: number): string {
-  const url = new URL(src);
+  let url: URL;
+  try {
+    url = new URL(src);
+  } catch {
+    return src;
+  }
   // The CDN may reuse the WebP variant already cached for the <img>. A unique
   // query forces a fresh content-negotiated request for the source file.
   url.searchParams.set("__bslovey_original", `${Date.now()}-${pageNumber}`);
