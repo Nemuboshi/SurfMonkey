@@ -811,6 +811,7 @@ export function secretDecode(str: string, key: number[]): string {
 .export.open-o .export-menu{display:flex}
 .export-button{background:#00a8ff;border-radius:4px;color:#fff!important;display:block}
 .export-menu{background:#fff;border-radius:0 0 3px 3px;box-shadow:0 2px 10px rgba(0,0,0,.3);display:none;flex-direction:column;position:absolute;top:100%;left:0;width:100%}
+.export-menu-item{display:block}
 .export-menu-item:hover{background:#dadada}
 .modal{align-items:center;background-color:rgba(0,0,0,.5);display:none;height:100%;justify-content:center;margin:auto;position:fixed;top:0;width:100%;z-index:2147483000}
 .modal.open-o{display:flex}
@@ -969,7 +970,7 @@ export function secretDecode(str: string, key: number[]): string {
       <div class="setting-menu-row">
         <div class="setting-menu-name"><label class="setting-menu-label">额外 Cookie</label></div>
         <div class="setting-menu-value">
-          <textarea class="setting-menu-input textarea-o extraCookie-s" spellcheck="false" placeholder="浏览器读不到 httpOnly cookie，缺哪个填哪个，形如 u_p=xxx; UID=xxx"></textarea>
+          <textarea class="setting-menu-input textarea-o extraCookie-s" spellcheck="false" placeholder="浏览器读不到 httpOnly cookie（如 acw_tc、UID），下载 403 时缺哪个填哪个，形如 acw_tc=xxx; UID=xxx"></textarea>
         </div>
       </div>
         </div>

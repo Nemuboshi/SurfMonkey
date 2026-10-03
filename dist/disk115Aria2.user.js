@@ -863,6 +863,7 @@
 .export.open-o .export-menu{display:flex}
 .export-button{background:#00a8ff;border-radius:4px;color:#fff!important;display:block}
 .export-menu{background:#fff;border-radius:0 0 3px 3px;box-shadow:0 2px 10px rgba(0,0,0,.3);display:none;flex-direction:column;position:absolute;top:100%;left:0;width:100%}
+.export-menu-item{display:block}
 .export-menu-item:hover{background:#dadada}
 .modal{align-items:center;background-color:rgba(0,0,0,.5);display:none;height:100%;justify-content:center;margin:auto;position:fixed;top:0;width:100%;z-index:2147483000}
 .modal.open-o{display:flex}
@@ -1009,7 +1010,7 @@
       <div class="setting-menu-row">
         <div class="setting-menu-name"><label class="setting-menu-label">\u989D\u5916 Cookie</label></div>
         <div class="setting-menu-value">
-          <textarea class="setting-menu-input textarea-o extraCookie-s" spellcheck="false" placeholder="\u6D4F\u89C8\u5668\u8BFB\u4E0D\u5230 httpOnly cookie\uFF0C\u7F3A\u54EA\u4E2A\u586B\u54EA\u4E2A\uFF0C\u5F62\u5982 u_p=xxx; UID=xxx"></textarea>
+          <textarea class="setting-menu-input textarea-o extraCookie-s" spellcheck="false" placeholder="\u6D4F\u89C8\u5668\u8BFB\u4E0D\u5230 httpOnly cookie\uFF08\u5982 acw_tc\u3001UID\uFF09\uFF0C\u4E0B\u8F7D 403 \u65F6\u7F3A\u54EA\u4E2A\u586B\u54EA\u4E2A\uFF0C\u5F62\u5982 acw_tc=xxx; UID=xxx"></textarea>
         </div>
       </div>
         </div>
