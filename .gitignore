@@ -2,3 +2,5 @@ node_modules/
 .pnpm-store/
 .playwright-cli
 .playwright
+.playwright-mcp/
+.mcp.json
