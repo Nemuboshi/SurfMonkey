@@ -67,6 +67,12 @@ It reports auth stages, endpoint shapes, observed resource types, and OPF packag
 A FancyIndex companion tool for file operations in listing pages.  
 It adds row-level actions to copy direct links (with optional Basic Auth injection) and push files/directories to aria2 via JSON-RPC.
 
+### `disk115Aria2`
+
+A port of the 115Exporter browser extension (github.com/acgotaku/115, GPLv3) to a userscript for 115.com.  
+It turns the checked rows of the file list into aria2 RPC tasks, and can export Aria2/IDM/direct-link text.  
+Userscripts cannot read httpOnly cookies the way `chrome.cookies` can, so a missing cookie has to be pasted into the 额外 Cookie setting.
+
 ## Metadata YAML format
 
 Use plain keys without `@`. Example:

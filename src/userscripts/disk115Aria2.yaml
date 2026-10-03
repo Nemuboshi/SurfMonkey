@@ -1,0 +1,16 @@
+name: 115 网盘 aria2 推送
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: 115 网盘文件列表推送到 aria2 RPC / 导出 Aria2·IDM·直链文本（115Exporter 扩展的用户脚本移植版）。
+match:
+  - https://115.com/*
+  - https://webapi.115.com/*
+  - https://proapi.115.com/*
+grant:
+  - GM_getValue
+  - GM_setValue
+  - GM_deleteValue
+  - GM_xmlhttpRequest
+connect:
+  - "*"
+run-at: document-start
