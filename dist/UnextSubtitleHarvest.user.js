@@ -1074,8 +1074,8 @@ ${text}`;
     }));
     return { episodes, title };
   }
-  async function resolveSubtitleVttUrl(ed) {
-    var _a2, _b2, _c, _d;
+  async function resolveSubtitleTracks(ed) {
+    var _a2, _b2, _c, _d, _e;
     const json = await graphql(
       "cosmo_getPlaylistUrl",
       { bitrateHigh: null, bitrateLow: 192, code: ed, playMode: "caption", validationOnly: false },
@@ -1087,30 +1087,42 @@ ${text}`;
       (p) => p.type === "HLS_CMAF" && p.playlistUrl
     );
     if (!token || !(profile == null ? void 0 : profile.playlistUrl)) {
-      throw new Error(`no HLS_CMAF playlist/token for ${ed}`);
+      throw new Error(
+        `no HLS_CMAF playlist/token for ${ed} (resultStatus ${(_e = playlist == null ? void 0 : playlist.resultStatus) != null ? _e : "?"})`
+      );
     }
     const masterResponse = await fetch(`${profile.playlistUrl}&play_token=${token}`);
     if (!masterResponse.ok) {
       throw new Error(`master -> HTTP ${masterResponse.status} for ${ed}`);
     }
     const master = await masterResponse.text();
-    const vttUrl = pickWebvttSubtitleUri(master);
-    if (!vttUrl) {
+    const tracks = pickWebvttSubtitleTracks(master);
+    if (tracks.length === 0) {
       throw new Error(`no webvtt subtitle track for ${ed}`);
     }
-    const variant = await (await fetch(vttUrl)).text();
-    return resolveFirstSegmentUrl(variant, vttUrl);
-  }
-  function pickWebvttSubtitleUri(master) {
-    var _a2;
-    const lines = master.split(/\r?\n/).filter((l) => l.includes("TYPE=SUBTITLES"));
-    for (const line of lines) {
-      const uri = (_a2 = line.match(/URI="([^"]+)"/)) == null ? void 0 : _a2[1];
-      if (uri == null ? void 0 : uri.includes("text_webvtt")) {
-        return uri;
-      }
+    for (const track of tracks) {
+      const variant = await (await fetch(track.vttUrl)).text();
+      track.vttUrl = resolveFirstSegmentUrl(variant, track.vttUrl);
     }
-    return null;
+    return tracks;
+  }
+  function pickWebvttSubtitleTracks(master) {
+    var _a2, _b2, _c, _d, _e;
+    const tracks = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const line of master.split(/\r?\n/)) {
+      if (!line.includes("TYPE=SUBTITLES")) {
+        continue;
+      }
+      const uri = (_a2 = line.match(/URI="([^"]+)"/)) == null ? void 0 : _a2[1];
+      if (!(uri == null ? void 0 : uri.includes("text_webvtt")) || seen.has(uri)) {
+        continue;
+      }
+      seen.add(uri);
+      const name = (_e = (_d = (_b2 = line.match(/NAME="([^"]+)"/)) == null ? void 0 : _b2[1]) != null ? _d : (_c = uri.match(/(text_webvtt[^/]*)/)) == null ? void 0 : _c[1]) != null ? _e : "subs";
+      tracks.push({ name, vttUrl: uri });
+    }
+    return tracks;
   }
   function resolveFirstSegmentUrl(variant, baseUrl) {
     for (const line of variant.split(/\r?\n/)) {
@@ -1162,17 +1174,33 @@ ${text}`;
     const entries = [];
     for (const ep of episodes) {
       try {
-        const vttUrl = await resolveSubtitleVttUrl(ep.ed);
-        const vtt = await fetchText(vttUrl);
-        const srt = webvttToSrt(vtt, true);
-        entries.push({ ed: ep.ed, label: episodeFileName(ep), srt, vtt });
-        onProgress(`done ${ep.number} ${ep.name} (${cueCount(vtt)} cues)`);
+        const tracks = await resolveSubtitleTracks(ep.ed);
+        const multi = tracks.length > 1;
+        for (const track of tracks) {
+          const vtt = await fetchText(track.vttUrl);
+          const srt = webvttToSrt(vtt, true);
+          entries.push({
+            ed: ep.ed,
+            label: episodeFileName(ep),
+            srt,
+            suffix: multi ? ` [${trackSuffix(track.name)}]` : "",
+            vtt
+          });
+          onProgress(
+            `done ${ep.number} ${ep.name}${multi ? ` [${track.name}]` : ""} (${cueCount(vtt)} cues)`
+          );
+        }
       } catch (error) {
         onProgress(`skip ${ep.number} ${ep.name}: ${error instanceof Error ? error.message : error}`);
       }
       await sleep(250 + Math.random() * 500);
     }
     return { entries, title };
+  }
+  function trackSuffix(name) {
+    const cleaned = sanitizeComponent(name, 30);
+    const dirMatch = cleaned.match(/^text_webvtt_(.+)$/);
+    return dirMatch ? dirMatch[1] : cleaned;
   }
   function cueCount(vtt) {
     return parseWebvtt(vtt).length;
@@ -1209,8 +1237,8 @@ ${text}`;
     const files = {};
     const encoder = new TextEncoder();
     for (const entry of entries) {
-      files[`webvtt/${safeTitle} - ${entry.label}.vtt`] = encoder.encode(entry.vtt);
-      files[`srt/${safeTitle} - ${entry.label}.srt`] = encoder.encode(entry.srt);
+      files[`webvtt/${safeTitle} - ${entry.label}${entry.suffix}.vtt`] = encoder.encode(entry.vtt);
+      files[`srt/${safeTitle} - ${entry.label}${entry.suffix}.srt`] = encoder.encode(entry.srt);
     }
     return new Promise((resolve, reject) => {
       zip(files, { level: 6 }, (error, data) => {
