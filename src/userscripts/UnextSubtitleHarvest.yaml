@@ -1,0 +1,9 @@
+name: Unext Subtitle Harvest
+namespace: github.com/Nemuboshi/SurfMonkey
+version: 1.0.0
+description: Download every episode's subtitles (WEBVTT + SRT with ruby and positioning) for a U-NEXT series as one ZIP.
+match:
+  - https://video.unext.jp/*
+grant:
+  - none
+run-at: document-idle
