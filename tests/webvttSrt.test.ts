@@ -60,10 +60,7 @@ test("markupToSrtText converts WEBVTT class-selector ruby to base(reading) with 
 });
 
 test("markupToSrtText strips plain ruby/rp and decodes entities", () => {
-  assert.equal(
-    markupToSrtText("<ruby>為<rp>(</rp><rt>ため</rt><rp>)</rp></ruby>に"),
-    "為(ため)に",
-  );
+  assert.equal(markupToSrtText("<ruby>為<rp>(</rp><rt>ため</rt><rp>)</rp></ruby>に"), "為(ため)に");
   assert.equal(markupToSrtText("A&nbsp;B &amp; C &lt;tag&gt;"), "A B & C <tag>");
 });
 

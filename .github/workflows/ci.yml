@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -17,13 +21,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Installs the exact pnpm from package.json's "packageManager" field.
+      # Must run before setup-node so its cache step can find the store.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
-
-      - name: Enable Corepack
-        run: corepack enable
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
