@@ -1260,6 +1260,7 @@ ${text}`;
   function mountHarvestButton(sid) {
     const button = document.createElement("button");
     button.id = "sm-unext-sub-btn";
+    button.dataset.smSid = sid;
     button.textContent = "Download all episode subtitles";
     document.body.appendChild(button);
     const panel = document.createElement("div");
@@ -1508,76 +1509,89 @@ ${text}`;
     });
     observer.observe(overlay, { attributes: true, attributeFilter: ["class"] });
   }
-  function mountSubtitleFilter() {
-    let mounted = false;
-    let attempts = 0;
-    const findTab = () => [...document.querySelectorAll('button[data-testid="capsule-tab-btn"]')].find(
+  function findFreeTab() {
+    var _a2;
+    return (_a2 = [...document.querySelectorAll('button[data-testid="capsule-tab-btn"]')].find(
       (b) => b.textContent.trim() === "\u898B\u653E\u984C"
-    );
-    const attach = () => {
-      if (mounted) {
-        return true;
+    )) != null ? _a2 : null;
+  }
+  function insertChip(tab) {
+    const chip = tab.cloneNode(false);
+    chip.id = "sm-unext-sub-chip";
+    chip.textContent = "\u5B57\u5E55\u3042\u308A";
+    chip.removeAttribute("data-testid");
+    tab.after(chip);
+    let syncAttached = false;
+    const attachSync = () => {
+      if (syncAttached) {
+        return;
       }
-      const tab = findTab();
-      if (!(tab == null ? void 0 : tab.parentElement)) {
-        return false;
+      const overlay = document.getElementById("sm-unext-overlay");
+      if (!overlay) {
+        return;
       }
-      mounted = true;
+      syncAttached = true;
+      new MutationObserver(() => {
+        if (!overlay.classList.contains("sm-open")) {
+          chip.style.backgroundColor = "";
+        }
+      }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
+    };
+    chip.addEventListener("click", () => {
+      const overlay = document.getElementById("sm-unext-overlay");
+      if (overlay == null ? void 0 : overlay.classList.contains("sm-open")) {
+        overlay.classList.remove("sm-open");
+        chip.style.backgroundColor = "";
+        return;
+      }
       const categoryCode = extractCategoryCode();
       if (!categoryCode) {
-        return true;
+        return;
       }
-      const chip = tab.cloneNode(false);
-      chip.id = "sm-unext-sub-chip";
-      chip.textContent = "\u5B57\u5E55\u3042\u308A";
-      chip.removeAttribute("data-testid");
-      tab.after(chip);
-      let syncAttached = false;
-      const attachSync = () => {
-        if (syncAttached) {
-          return;
-        }
-        const overlay = document.getElementById("sm-unext-overlay");
-        if (!overlay) {
-          return;
-        }
-        syncAttached = true;
-        new MutationObserver(() => {
-          if (!overlay.classList.contains("sm-open")) {
-            chip.style.backgroundColor = "";
-          }
-        }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
-      };
-      chip.addEventListener("click", () => {
-        const overlay = document.getElementById("sm-unext-overlay");
-        if (overlay == null ? void 0 : overlay.classList.contains("sm-open")) {
-          overlay.classList.remove("sm-open");
-          chip.style.backgroundColor = "";
-          return;
-        }
-        chip.style.backgroundColor = "rgba(255,255,255,.3)";
-        openSubtitleDialog(categoryCode);
-        attachSync();
-      });
-      return true;
-    };
-    const timer = setInterval(() => {
-      attempts += 1;
-      if (attach() || attempts > 60) {
-        clearInterval(timer);
-      }
-    }, 500);
-    attach();
+      chip.style.backgroundColor = "rgba(255,255,255,.3)";
+      openSubtitleDialog(categoryCode);
+      attachSync();
+    });
   }
-  function mount() {
+  function syncUI() {
+    var _a2, _b2, _c;
     ensureStyles();
     const sid = extractSeriesId();
-    if (sid) {
+    const btn = document.getElementById("sm-unext-sub-btn");
+    if (sid && (!btn || btn.dataset.smSid !== sid)) {
+      btn == null ? void 0 : btn.remove();
+      (_a2 = document.getElementById("sm-unext-sub-panel")) == null ? void 0 : _a2.remove();
       mountHarvestButton(sid);
+    } else if (!sid && btn) {
+      btn.remove();
+      (_b2 = document.getElementById("sm-unext-sub-panel")) == null ? void 0 : _b2.remove();
     }
-    if (/\/browse\//.test(location.pathname)) {
-      mountSubtitleFilter();
+    const onBrowse = /\/browse\//.test(location.pathname);
+    const chip = document.getElementById("sm-unext-sub-chip");
+    const tab = onBrowse ? findFreeTab() : null;
+    if (tab && !chip) {
+      insertChip(tab);
+    } else if (chip && !tab) {
+      chip.remove();
     }
+    if (!onBrowse) {
+      (_c = document.getElementById("sm-unext-overlay")) == null ? void 0 : _c.classList.remove("sm-open");
+    }
+  }
+  var syncTimer = null;
+  function scheduleSync() {
+    if (syncTimer) {
+      return;
+    }
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      syncUI();
+    }, 250);
+  }
+  function mount() {
+    syncUI();
+    new MutationObserver(scheduleSync).observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("popstate", scheduleSync);
   }
   if (typeof document !== "undefined") {
     const boot = () => mount();

@@ -374,6 +374,7 @@ function ensureStyles(): void {
 function mountHarvestButton(sid: string): void {
   const button = document.createElement("button");
   button.id = "sm-unext-sub-btn";
+  button.dataset.smSid = sid;
   button.textContent = "Download all episode subtitles";
   document.body.appendChild(button);
 
@@ -658,86 +659,106 @@ function openSubtitleDialog(categoryCode: string): void {
   observer.observe(overlay, { attributes: true, attributeFilter: ["class"] });
 }
 
-function mountSubtitleFilter(): void {
-  let mounted = false;
-  let attempts = 0;
-  const findTab = () =>
-    [...document.querySelectorAll('button[data-testid="capsule-tab-btn"]')].find(
+function findFreeTab(): HTMLButtonElement | null {
+  return (
+    [...document.querySelectorAll<HTMLButtonElement>('button[data-testid="capsule-tab-btn"]')].find(
       (b) => b.textContent.trim() === "見放題",
-    );
+    ) ?? null
+  );
+}
 
-  const attach = () => {
-    if (mounted) {
-      return true;
+// Clone a real capsule tab so font/size/radius/hover match exactly. The chip
+// lives inside React's tab bar, so it disappears whenever React re-renders or
+// the SPA navigates — syncUI() re-inserts it, and its click handler reads the
+// category from the *current* URL each time.
+function insertChip(tab: HTMLButtonElement): void {
+  const chip = tab.cloneNode(false) as HTMLButtonElement;
+  chip.id = "sm-unext-sub-chip";
+  chip.textContent = "字幕あり";
+  chip.removeAttribute("data-testid");
+  tab.after(chip);
+
+  let syncAttached = false;
+  const attachSync = () => {
+    if (syncAttached) {
+      return;
     }
-    const tab = findTab();
-    if (!tab?.parentElement) {
-      return false;
+    const overlay = document.getElementById("sm-unext-overlay");
+    if (!overlay) {
+      return;
     }
-    mounted = true;
-    const categoryCode = extractCategoryCode();
-    if (!categoryCode) {
-      return true;
-    }
-
-    // Clone a real capsule tab so font/size/radius/hover match exactly.
-    const chip = tab.cloneNode(false) as HTMLButtonElement;
-    chip.id = "sm-unext-sub-chip";
-    chip.textContent = "字幕あり";
-    chip.removeAttribute("data-testid");
-    tab.after(chip);
-
-    let syncAttached = false;
-    const attachSync = () => {
-      if (syncAttached) {
-        return;
-      }
-      const overlay = document.getElementById("sm-unext-overlay");
-      if (!overlay) {
-        return;
-      }
-      syncAttached = true;
-      // Keep the chip highlight in sync with the overlay's open state.
-      new MutationObserver(() => {
-        if (!overlay.classList.contains("sm-open")) {
-          chip.style.backgroundColor = "";
-        }
-      }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
-    };
-
-    chip.addEventListener("click", () => {
-      const overlay = document.getElementById("sm-unext-overlay");
-      if (overlay?.classList.contains("sm-open")) {
-        overlay.classList.remove("sm-open");
+    syncAttached = true;
+    // Keep the chip highlight in sync with the overlay's open state.
+    new MutationObserver(() => {
+      if (!overlay.classList.contains("sm-open")) {
         chip.style.backgroundColor = "";
-        return;
       }
-      chip.style.backgroundColor = "rgba(255,255,255,.3)";
-      openSubtitleDialog(categoryCode);
-      attachSync();
-    });
-    return true;
+    }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
   };
 
-  // The tabs are rendered by React after data loads; poll until they appear.
-  const timer = setInterval(() => {
-    attempts += 1;
-    if (attach() || attempts > 60) {
-      clearInterval(timer);
+  chip.addEventListener("click", () => {
+    const overlay = document.getElementById("sm-unext-overlay");
+    if (overlay?.classList.contains("sm-open")) {
+      overlay.classList.remove("sm-open");
+      chip.style.backgroundColor = "";
+      return;
     }
-  }, 500);
-  attach();
+    const categoryCode = extractCategoryCode();
+    if (!categoryCode) {
+      return;
+    }
+    chip.style.backgroundColor = "rgba(255,255,255,.3)";
+    openSubtitleDialog(categoryCode);
+    attachSync();
+  });
+}
+
+// Route-aware reconciliation, run on load and after every (debounced) DOM
+// mutation / popstate: the site is a client-side-routed SPA, so our UI must
+// appear and disappear with the pages it belongs to.
+export function syncUI(): void {
+  ensureStyles();
+
+  const sid = extractSeriesId();
+  const btn = document.getElementById("sm-unext-sub-btn");
+  if (sid && (!btn || btn.dataset.smSid !== sid)) {
+    btn?.remove();
+    document.getElementById("sm-unext-sub-panel")?.remove();
+    mountHarvestButton(sid);
+  } else if (!sid && btn) {
+    btn.remove();
+    document.getElementById("sm-unext-sub-panel")?.remove();
+  }
+
+  const onBrowse = /\/browse\//.test(location.pathname);
+  const chip = document.getElementById("sm-unext-sub-chip");
+  const tab = onBrowse ? findFreeTab() : null;
+  if (tab && !chip) {
+    insertChip(tab);
+  } else if (chip && !tab) {
+    chip.remove();
+    // Leave the dialog open state to the overlay check below.
+  }
+  if (!onBrowse) {
+    document.getElementById("sm-unext-overlay")?.classList.remove("sm-open");
+  }
+}
+
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSync(): void {
+  if (syncTimer) {
+    return;
+  }
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    syncUI();
+  }, 250);
 }
 
 export function mount(): void {
-  ensureStyles();
-  const sid = extractSeriesId();
-  if (sid) {
-    mountHarvestButton(sid);
-  }
-  if (/\/browse\//.test(location.pathname)) {
-    mountSubtitleFilter();
-  }
+  syncUI();
+  new MutationObserver(scheduleSync).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("popstate", scheduleSync);
 }
 
 if (typeof document !== "undefined") {
