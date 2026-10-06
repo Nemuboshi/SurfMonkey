@@ -15,7 +15,9 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned instead of ubuntu-latest: "latest" flips to Ubuntu 26 on
+    # 2026-10-19 and we want to choose when that migration happens.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -24,7 +26,7 @@ jobs:
       # Installs the exact pnpm from package.json's "packageManager" field.
       # Must run before setup-node so its cache step can find the store.
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Setup Node
         uses: actions/setup-node@v5
