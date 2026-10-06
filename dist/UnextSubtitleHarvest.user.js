@@ -1254,10 +1254,6 @@ ${text}`;
     #sm-unext-sub-panel .row{white-space:pre-wrap;word-break:break-word}
     #sm-unext-sub-panel .head{color:#fff;font-weight:700;margin-bottom:6px}
     #sm-unext-sub-chip{cursor:pointer}
-    #sm-unext-sub-chip.sm-busy{opacity:.6}
-    .sm-unext-hidden{display:none!important}
-    .sm-unext-contents{display:contents!important}
-    .sm-unext-span{grid-column:1/-1}
   `;
     document.head.appendChild(style);
   }
@@ -1299,7 +1295,6 @@ ${text}`;
       }
     });
   }
-  var SID_IN_HREF = /(?:\/(?:title|play)\/)(SID\d+)/;
   function extractCategoryCode(url = typeof location !== "undefined" ? location.href : "") {
     const segments = new URL(url).pathname.split("/");
     for (let i = segments.length - 1; i >= 0; i -= 1) {
@@ -1330,137 +1325,188 @@ ${text}`;
     return vars;
   }
   var MAX_CATEGORY_PAGES = 300;
-  function observedCategoryPages() {
-    if (typeof performance === "undefined") {
-      return 1;
-    }
-    let max = 1;
-    for (const entry of performance.getEntriesByType("resource")) {
-      if (!entry.name.includes("cosmo_VideoCategory")) {
-        continue;
-      }
-      try {
-        const raw = new URL(entry.name).searchParams.get("variables");
-        const page = raw ? Number(JSON.parse(raw).page) : NaN;
-        if (Number.isFinite(page) && page > max) {
-          max = page;
-        }
-      } catch (e) {
-      }
-    }
-    return max;
-  }
-  var FlagStore = class {
-    constructor(categoryCode) {
-      this.categoryCode = categoryCode;
-      this.flags = /* @__PURE__ */ new Map();
-      this.fetchedPages = 0;
-      this.scanning = false;
-      this.varsKey = "";
-    }
-    // The flags are only valid for the sort order / sale tab the pages were
-    // fetched with; reset when the site's own request vars change.
-    currentVarsKey() {
-      var _a2, _b2;
-      const site = scrapeCategoryVars();
-      return `${String((_a2 = site == null ? void 0 : site.sortOrder) != null ? _a2 : "POPULAR")}|${String((_b2 = site == null ? void 0 : site.filterSaleType) != null ? _b2 : "")}`;
-    }
-    async ensurePages() {
-      var _a2, _b2, _c;
-      const key = this.currentVarsKey();
-      if (key !== this.varsKey) {
-        this.varsKey = key;
-        this.flags.clear();
-        this.fetchedPages = 0;
-      }
-      const want = Math.min(observedCategoryPages(), MAX_CATEGORY_PAGES);
-      if (this.scanning || this.fetchedPages >= want) {
+  async function scanCategory(categoryCode, onBatch, shouldContinue) {
+    var _a2, _b2, _c, _d, _e;
+    const site = scrapeCategoryVars();
+    const base = {
+      categoryCode,
+      filterSaleType: (_a2 = site == null ? void 0 : site.filterSaleType) != null ? _a2 : null,
+      sortOrder: (_b2 = site == null ? void 0 : site.sortOrder) != null ? _b2 : "POPULAR"
+    };
+    for (let page = 1; page <= MAX_CATEGORY_PAGES; page += 1) {
+      if (!shouldContinue()) {
         return;
       }
-      this.scanning = true;
-      try {
-        const [sortOrder, filterSaleTypeRaw] = key.split("|");
-        const base = {
-          categoryCode: this.categoryCode,
-          filterSaleType: filterSaleTypeRaw === "" ? null : filterSaleTypeRaw,
-          sortOrder
-        };
-        for (let page = this.fetchedPages + 1; page <= want; page += 1) {
-          const json = await graphql(
-            "cosmo_VideoCategory",
-            { ...base, page },
-            VIDEO_CATEGORY_HASH
-          );
-          const titles = (_c = (_b2 = (_a2 = json.data) == null ? void 0 : _a2.webfront_searchVideo) == null ? void 0 : _b2.titles) != null ? _c : [];
-          for (const t of titles) {
-            if (typeof t.id === "string") {
-              this.flags.set(t.id, Boolean(t.hasSubtitleTrack));
+      const json = await graphql(
+        "cosmo_VideoCategory",
+        { ...base, page },
+        VIDEO_CATEGORY_HASH
+      );
+      const titles = (_e = (_d = (_c = json.data) == null ? void 0 : _c.webfront_searchVideo) == null ? void 0 : _d.titles) != null ? _e : [];
+      onBatch(titles);
+      if (titles.length === 0) {
+        return;
+      }
+      await sleep(120 + Math.random() * 180);
+    }
+  }
+  function ensurePanelStyles() {
+    if (document.getElementById("sm-unext-panel-style")) {
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = "sm-unext-panel-style";
+    style.textContent = `
+    #sm-unext-overlay{align-items:flex-start;background:rgba(10,10,14,.6);display:none;
+      inset:0;justify-content:center;position:fixed;z-index:2147483000}
+    #sm-unext-overlay.sm-open{display:flex}
+    #sm-unext-dialog{background:#1c1c24;border:1px solid rgba(255,255,255,.14);border-radius:10px;
+      box-shadow:0 12px 48px rgba(0,0,0,.6);display:flex;flex-direction:column;height:80vh;
+      margin:10vh 16px;max-width:1060px;width:100%}
+    #sm-unext-dialog header{align-items:center;color:#fff;display:flex;
+      font:700 15px/1.4 "Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+      justify-content:space-between;padding:14px 18px}
+    #sm-unext-dialog header .count{color:#9a9aa6;font-weight:400;margin-left:8px}
+    #sm-unext-close{background:none;border:none;color:#9a9aa6;cursor:pointer;font-size:20px;line-height:1;padding:4px 8px}
+    #sm-unext-close:hover{color:#fff}
+    #sm-unext-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+      min-width:0;overflow:auto;padding:0 18px 18px}
+    #sm-unext-grid a{color:#e6e6ec;display:block;font:12px/1.4 "Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+      min-width:0;text-decoration:none}
+    #sm-unext-grid img{aspect-ratio:16/9;background:#2a2a34;border-radius:6px;display:block;
+      object-fit:cover;transition:transform .12s ease;width:100%}
+    #sm-unext-grid a:hover img{transform:scale(1.03)}
+    #sm-unext-grid .name{display:block;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #sm-unext-grid .badge{color:#7dd47d}
+    #sm-unext-status{color:#9a9aa6;font:12px/1 "Hiragino Sans",sans-serif;padding:0 18px 12px}
+  `;
+    document.head.appendChild(style);
+  }
+  var thumbObserver = null;
+  function observeThumb(img, src) {
+    if (!thumbObserver) {
+      thumbObserver = new IntersectionObserver(
+        (entries, observer) => {
+          var _a2;
+          for (const entry of entries) {
+            if (!entry.isIntersecting) {
+              continue;
             }
+            const el = entry.target;
+            el.src = (_a2 = el.dataset.smSrc) != null ? _a2 : "";
+            delete el.dataset.smSrc;
+            observer.unobserve(el);
           }
-          this.fetchedPages = page;
-          if (titles.length === 0) {
-            break;
-          }
-          await sleep(100 + Math.random() * 150);
+        },
+        { rootMargin: "400px" }
+      );
+    }
+    img.dataset.smSrc = src;
+    thumbObserver.observe(img);
+  }
+  function subtitleCard(t) {
+    var _a2, _b2, _c;
+    if (typeof t.id !== "string" || !/^SID\d+$/.test(t.id)) {
+      return null;
+    }
+    const a = document.createElement("a");
+    a.href = `/title/${t.id}`;
+    a.title = (_a2 = t.titleName) != null ? _a2 : t.id;
+    const img = document.createElement("img");
+    const thumb = (_b2 = t.thumbnail) == null ? void 0 : _b2.standard;
+    if (thumb) {
+      const base = thumb.startsWith("http") ? thumb : `https://${thumb}`;
+      observeThumb(img, `${base}${base.includes("?") ? "&" : "?"}f=avif&q=M&p=W400`);
+    }
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = (_c = t.titleName) != null ? _c : t.id;
+    a.append(img, name);
+    if (t.nfreeBadge) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = ` ${t.nfreeBadge}`;
+      a.appendChild(badge);
+    }
+    return a;
+  }
+  function openSubtitleDialog(categoryCode) {
+    ensurePanelStyles();
+    let overlayEl = document.getElementById("sm-unext-overlay");
+    if (!overlayEl) {
+      overlayEl = document.createElement("div");
+      overlayEl.id = "sm-unext-overlay";
+      const overlay2 = overlayEl;
+      const dialog = document.createElement("div");
+      dialog.id = "sm-unext-dialog";
+      const header = document.createElement("header");
+      const titleSpan = document.createElement("span");
+      titleSpan.textContent = "\u5B57\u5E55\u3042\u308A\u4F5C\u54C1";
+      const count = document.createElement("span");
+      count.className = "count";
+      count.id = "sm-unext-count";
+      const close = document.createElement("button");
+      close.id = "sm-unext-close";
+      close.textContent = "\u2715";
+      header.append(titleSpan, count, close);
+      const grid2 = document.createElement("div");
+      grid2.id = "sm-unext-grid";
+      const status = document.createElement("div");
+      status.id = "sm-unext-status";
+      status.textContent = "Loading\u2026";
+      dialog.append(header, grid2, status);
+      overlay2.appendChild(dialog);
+      document.body.appendChild(overlay2);
+      close.addEventListener("click", () => overlay2.classList.remove("sm-open"));
+      overlay2.addEventListener("click", (event) => {
+        if (event.target === overlay2) {
+          overlay2.classList.remove("sm-open");
         }
-      } finally {
-        this.scanning = false;
+      });
+    }
+    const overlay = overlayEl;
+    const grid = document.getElementById("sm-unext-grid");
+    const countEl = document.getElementById("sm-unext-count");
+    const statusEl = document.getElementById("sm-unext-status");
+    grid.textContent = "";
+    countEl.textContent = "";
+    statusEl.textContent = "Loading\u2026";
+    overlay.classList.add("sm-open");
+    let open = true;
+    let shown = 0;
+    let scanned = 0;
+    void scanCategory(
+      categoryCode,
+      (titles) => {
+        scanned += titles.length;
+        for (const t of titles) {
+          if (!t.hasSubtitleTrack) {
+            continue;
+          }
+          const card = subtitleCard(t);
+          if (card) {
+            grid.appendChild(card);
+            shown += 1;
+          }
+        }
+        countEl.textContent = `${shown} titles`;
+        statusEl.textContent = `Scanned ${scanned}\u2026`;
+      },
+      () => open
+    ).then(() => {
+      if (open) {
+        statusEl.textContent = shown === 0 ? "No subtitle titles found." : "";
       }
-    }
-  };
-  function normalizeGrid(rowGrid) {
-    if (rowGrid.dataset.smGrid) {
-      return;
-    }
-    const wrapper = rowGrid.parentElement;
-    const outer = wrapper == null ? void 0 : wrapper.parentElement;
-    if (!wrapper || !outer) {
-      return;
-    }
-    rowGrid.dataset.smGrid = "1";
-    const cs = getComputedStyle(rowGrid);
-    const template = cs.gridTemplateColumns;
-    const gap = cs.gap;
-    rowGrid.classList.add("sm-unext-contents");
-    wrapper.classList.add("sm-unext-contents");
-    if (!outer.dataset.smGridHost) {
-      outer.dataset.smGridHost = "1";
-      outer.style.display = "grid";
-      outer.style.gridTemplateColumns = template;
-      outer.style.gap = gap;
-    }
-    for (const child of outer.children) {
-      const el = child;
-      if (!el.dataset.smGrid && el !== rowGrid && !el.classList.contains("sm-unext-span")) {
-        el.classList.add("sm-unext-span");
+    }).catch((error) => {
+      statusEl.textContent = `Error: ${error instanceof Error ? error.message : String(error)}`;
+    });
+    const observer = new MutationObserver(() => {
+      if (!overlay.classList.contains("sm-open")) {
+        open = false;
+        observer.disconnect();
       }
-    }
-  }
-  function cardCell(card) {
-    const parent = card.parentElement;
-    return parent && parent.children.length === 1 ? parent : card;
-  }
-  function setCellHidden(cell, hide) {
-    if (cell.classList.contains("sm-unext-hidden") !== hide) {
-      cell.classList.toggle("sm-unext-hidden", hide);
-    }
-  }
-  function passCards(store, active) {
-    var _a2;
-    for (const card of document.querySelectorAll(
-      'a[href*="/title/SID"], a[href*="/play/SID"]'
-    )) {
-      const sid = (_a2 = card.href.match(SID_IN_HREF)) == null ? void 0 : _a2[1];
-      if (!sid) {
-        continue;
-      }
-      const cell = cardCell(card);
-      const parent = cell.parentElement;
-      if (parent && getComputedStyle(parent).display === "grid" && !parent.dataset.smGridHost) {
-        normalizeGrid(parent);
-      }
-      setCellHidden(cell, active && store.flags.get(sid) === false);
-    }
+    });
+    observer.observe(overlay, { attributes: true, attributeFilter: ["class"] });
   }
   function mountSubtitleFilter() {
     let mounted = false;
@@ -1485,58 +1531,33 @@ ${text}`;
       chip.id = "sm-unext-sub-chip";
       chip.textContent = "\u5B57\u5E55\u3042\u308A";
       chip.removeAttribute("data-testid");
-      chip.style.backgroundColor = "transparent";
       tab.after(chip);
-      const store = new FlagStore(categoryCode);
-      let active = false;
-      let loopRunning = false;
-      const paintChip = () => {
-        chip.style.backgroundColor = active ? "rgba(255,255,255,.3)" : "transparent";
-        chip.classList.toggle("sm-busy", store.scanning);
-      };
-      const pump = async () => {
-        if (loopRunning) {
+      let syncAttached = false;
+      const attachSync = () => {
+        if (syncAttached) {
           return;
         }
-        loopRunning = true;
-        try {
-          while (active && store.fetchedPages < observedCategoryPages()) {
-            await store.ensurePages();
-            passCards(store, true);
-          }
-        } catch (e) {
-        } finally {
-          loopRunning = false;
-          paintChip();
-        }
-      };
-      let debounce = null;
-      const schedulePass = () => {
-        if (!active || debounce) {
+        const overlay = document.getElementById("sm-unext-overlay");
+        if (!overlay) {
           return;
         }
-        debounce = setTimeout(() => {
-          debounce = null;
-          passCards(store, true);
-          void pump();
-        }, 250);
+        syncAttached = true;
+        new MutationObserver(() => {
+          if (!overlay.classList.contains("sm-open")) {
+            chip.style.backgroundColor = "";
+          }
+        }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
       };
-      new MutationObserver(schedulePass).observe(document.body, { childList: true, subtree: true });
-      chip.addEventListener("click", async () => {
-        active = !active;
-        paintChip();
-        if (active) {
-          try {
-            await store.ensurePages();
-          } catch (e) {
-          }
-          passCards(store, true);
-          void pump();
-        } else {
-          for (const el of document.querySelectorAll(".sm-unext-hidden")) {
-            el.classList.remove("sm-unext-hidden");
-          }
+      chip.addEventListener("click", () => {
+        const overlay = document.getElementById("sm-unext-overlay");
+        if (overlay == null ? void 0 : overlay.classList.contains("sm-open")) {
+          overlay.classList.remove("sm-open");
+          chip.style.backgroundColor = "";
+          return;
         }
+        chip.style.backgroundColor = "rgba(255,255,255,.3)";
+        openSubtitleDialog(categoryCode);
+        attachSync();
       });
       return true;
     };

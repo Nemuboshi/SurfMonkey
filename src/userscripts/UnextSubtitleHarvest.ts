@@ -39,9 +39,11 @@ type PlaylistResponse = {
 };
 
 type CategoryTitle = {
-  hasSubtitle?: boolean;
   hasSubtitleTrack?: boolean;
   id?: string;
+  nfreeBadge?: string;
+  thumbnail?: { standard?: string };
+  titleName?: string;
 };
 
 type CategoryResponse = {
@@ -365,10 +367,6 @@ function ensureStyles(): void {
     #sm-unext-sub-panel .row{white-space:pre-wrap;word-break:break-word}
     #sm-unext-sub-panel .head{color:#fff;font-weight:700;margin-bottom:6px}
     #sm-unext-sub-chip{cursor:pointer}
-    #sm-unext-sub-chip.sm-busy{opacity:.6}
-    .sm-unext-hidden{display:none!important}
-    .sm-unext-contents{display:contents!important}
-    .sm-unext-span{grid-column:1/-1}
   `;
   document.head.appendChild(style);
 }
@@ -415,9 +413,7 @@ function mountHarvestButton(sid: string): void {
   });
 }
 
-// ---- has subtitles filter on category/browse pages ----
-
-const SID_IN_HREF = /(?:\/(?:title|play)\/)(SID\d+)/;
+// ---- "字幕あり" (has subtitles) filter on category/browse pages ----
 
 export function extractCategoryCode(
   url = typeof location !== "undefined" ? location.href : "",
@@ -458,153 +454,208 @@ export function scrapeCategoryVars(): Record<string, unknown> | null {
 
 const MAX_CATEGORY_PAGES = 300;
 
-// Highest cosmo_VideoCategory page the site itself has requested so far —
-// it paginates as the user scrolls, so this tracks scroll depth. We only
-// fetch flags for pages actually needed instead of pre-scanning the whole
-// category (which can be 200+ pages).
-export function observedCategoryPages(): number {
-  if (typeof performance === "undefined") {
-    return 1;
-  }
-  let max = 1;
-  for (const entry of performance.getEntriesByType("resource")) {
-    if (!entry.name.includes("cosmo_VideoCategory")) {
-      continue;
-    }
-    try {
-      const raw = new URL(entry.name).searchParams.get("variables");
-      const page = raw ? Number((JSON.parse(raw) as { page?: unknown }).page) : NaN;
-      if (Number.isFinite(page) && page > max) {
-        max = page;
-      }
-    } catch {
-      // malformed URL — skip
-    }
-  }
-  return max;
-}
-
-class FlagStore {
-  readonly flags = new Map<string, boolean>();
-  fetchedPages = 0;
-  scanning = false;
-  varsKey = "";
-
-  constructor(readonly categoryCode: string) {}
-
-  // The flags are only valid for the sort order / sale tab the pages were
-  // fetched with; reset when the site's own request vars change.
-  currentVarsKey(): string {
-    const site = scrapeCategoryVars();
-    return `${String(site?.sortOrder ?? "POPULAR")}|${String(site?.filterSaleType ?? "")}`;
-  }
-
-  async ensurePages(): Promise<void> {
-    const key = this.currentVarsKey();
-    if (key !== this.varsKey) {
-      this.varsKey = key;
-      this.flags.clear();
-      this.fetchedPages = 0;
-    }
-    const want = Math.min(observedCategoryPages(), MAX_CATEGORY_PAGES);
-    if (this.scanning || this.fetchedPages >= want) {
+// Walk the category's pages (30 titles each), invoking onBatch per page so a
+// UI can render incrementally. Stops at an empty page or the cap.
+export async function scanCategory(
+  categoryCode: string,
+  onBatch: (titles: CategoryTitle[]) => void,
+  shouldContinue: () => boolean,
+): Promise<void> {
+  const site = scrapeCategoryVars();
+  const base: Record<string, unknown> = {
+    categoryCode,
+    filterSaleType: site?.filterSaleType ?? null,
+    sortOrder: site?.sortOrder ?? "POPULAR",
+  };
+  for (let page = 1; page <= MAX_CATEGORY_PAGES; page += 1) {
+    if (!shouldContinue()) {
       return;
     }
-    this.scanning = true;
-    try {
-      const [sortOrder, filterSaleTypeRaw] = key.split("|");
-      const base: Record<string, unknown> = {
-        categoryCode: this.categoryCode,
-        filterSaleType: filterSaleTypeRaw === "" ? null : filterSaleTypeRaw,
-        sortOrder,
-      };
-      for (let page = this.fetchedPages + 1; page <= want; page += 1) {
-        const json = await graphql<CategoryResponse>(
-          "cosmo_VideoCategory",
-          { ...base, page },
-          VIDEO_CATEGORY_HASH,
-        );
-        const titles = json.data?.webfront_searchVideo?.titles ?? [];
-        for (const t of titles) {
-          if (typeof t.id === "string") {
-            this.flags.set(t.id, Boolean(t.hasSubtitleTrack));
+    const json = await graphql<CategoryResponse>(
+      "cosmo_VideoCategory",
+      { ...base, page },
+      VIDEO_CATEGORY_HASH,
+    );
+    const titles = json.data?.webfront_searchVideo?.titles ?? [];
+    onBatch(titles);
+    if (titles.length === 0) {
+      return;
+    }
+    await sleep(120 + Math.random() * 180);
+  }
+}
+
+// ---- Floating "字幕あり" panel ----
+// The site's own list is virtualised and re-renders on scroll, so filtering it
+// in place flickers no matter how carefully we patch classes. Instead the chip
+// opens our own overlay that renders the subtitle-enabled titles directly.
+
+function ensurePanelStyles(): void {
+  if (document.getElementById("sm-unext-panel-style")) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = "sm-unext-panel-style";
+  style.textContent = `
+    #sm-unext-overlay{align-items:flex-start;background:rgba(10,10,14,.6);display:none;
+      inset:0;justify-content:center;position:fixed;z-index:2147483000}
+    #sm-unext-overlay.sm-open{display:flex}
+    #sm-unext-dialog{background:#1c1c24;border:1px solid rgba(255,255,255,.14);border-radius:10px;
+      box-shadow:0 12px 48px rgba(0,0,0,.6);display:flex;flex-direction:column;height:80vh;
+      margin:10vh 16px;max-width:1060px;width:100%}
+    #sm-unext-dialog header{align-items:center;color:#fff;display:flex;
+      font:700 15px/1.4 "Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+      justify-content:space-between;padding:14px 18px}
+    #sm-unext-dialog header .count{color:#9a9aa6;font-weight:400;margin-left:8px}
+    #sm-unext-close{background:none;border:none;color:#9a9aa6;cursor:pointer;font-size:20px;line-height:1;padding:4px 8px}
+    #sm-unext-close:hover{color:#fff}
+    #sm-unext-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+      min-width:0;overflow:auto;padding:0 18px 18px}
+    #sm-unext-grid a{color:#e6e6ec;display:block;font:12px/1.4 "Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+      min-width:0;text-decoration:none}
+    #sm-unext-grid img{aspect-ratio:16/9;background:#2a2a34;border-radius:6px;display:block;
+      object-fit:cover;transition:transform .12s ease;width:100%}
+    #sm-unext-grid a:hover img{transform:scale(1.03)}
+    #sm-unext-grid .name{display:block;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #sm-unext-grid .badge{color:#7dd47d}
+    #sm-unext-status{color:#9a9aa6;font:12px/1 "Hiragino Sans",sans-serif;padding:0 18px 12px}
+  `;
+  document.head.appendChild(style);
+}
+
+// The native loading="lazy" proved unreliable inside our overlay, so load
+// thumbnails manually once they near the viewport.
+let thumbObserver: IntersectionObserver | null = null;
+function observeThumb(img: HTMLImageElement, src: string): void {
+  if (!thumbObserver) {
+    thumbObserver = new IntersectionObserver(
+      (entries, observer) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) {
+            continue;
           }
+          const el = entry.target as HTMLImageElement;
+          el.src = el.dataset.smSrc ?? "";
+          delete el.dataset.smSrc;
+          observer.unobserve(el);
         }
-        this.fetchedPages = page;
-        if (titles.length === 0) {
-          break;
-        }
-        await sleep(100 + Math.random() * 150);
+      },
+      { rootMargin: "400px" },
+    );
+  }
+  img.dataset.smSrc = src;
+  thumbObserver.observe(img);
+}
+
+function subtitleCard(t: CategoryTitle): HTMLAnchorElement | null {
+  if (typeof t.id !== "string" || !/^SID\d+$/.test(t.id)) {
+    return null;
+  }
+  const a = document.createElement("a");
+  a.href = `/title/${t.id}`;
+  a.title = t.titleName ?? t.id;
+  const img = document.createElement("img");
+  const thumb = t.thumbnail?.standard;
+  if (thumb) {
+    const base = thumb.startsWith("http") ? thumb : `https://${thumb}`;
+    // Same resize params the site uses — the originals are huge PNGs.
+    observeThumb(img, `${base}${base.includes("?") ? "&" : "?"}f=avif&q=M&p=W400`);
+  }
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = t.titleName ?? t.id;
+  a.append(img, name);
+  if (t.nfreeBadge) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = ` ${t.nfreeBadge}`;
+    a.appendChild(badge);
+  }
+  return a;
+}
+
+function openSubtitleDialog(categoryCode: string): void {
+  ensurePanelStyles();
+  let overlayEl = document.getElementById("sm-unext-overlay");
+  if (!overlayEl) {
+    overlayEl = document.createElement("div");
+    overlayEl.id = "sm-unext-overlay";
+    const overlay = overlayEl;
+    const dialog = document.createElement("div");
+    dialog.id = "sm-unext-dialog";
+    const header = document.createElement("header");
+    const titleSpan = document.createElement("span");
+    titleSpan.textContent = "字幕あり作品";
+    const count = document.createElement("span");
+    count.className = "count";
+    count.id = "sm-unext-count";
+    const close = document.createElement("button");
+    close.id = "sm-unext-close";
+    close.textContent = "✕";
+    header.append(titleSpan, count, close);
+    const grid = document.createElement("div");
+    grid.id = "sm-unext-grid";
+    const status = document.createElement("div");
+    status.id = "sm-unext-status";
+    status.textContent = "Loading…";
+    dialog.append(header, grid, status);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    close.addEventListener("click", () => overlay.classList.remove("sm-open"));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        overlay.classList.remove("sm-open");
       }
-    } finally {
-      this.scanning = false;
-    }
+    });
   }
-}
+  const overlay = overlayEl;
+  const grid = document.getElementById("sm-unext-grid") as HTMLElement;
+  const countEl = document.getElementById("sm-unext-count") as HTMLElement;
+  const statusEl = document.getElementById("sm-unext-status") as HTMLElement;
+  grid.textContent = "";
+  countEl.textContent = "";
+  statusEl.textContent = "Loading…";
+  overlay.classList.add("sm-open");
 
-// The category list is built as one grid container per row of 4 cards, so
-// hiding cards in place leaves ragged rows. Flattening the row containers
-// (and their single-child wrappers) with display:contents makes every cell
-// participate in one shared grid on the outer container instead: hidden cells
-// collapse, rows fill up, and spacing stays uniform.
-function normalizeGrid(rowGrid: HTMLElement): void {
-  if (rowGrid.dataset.smGrid) {
-    return;
-  }
-  const wrapper = rowGrid.parentElement;
-  const outer = wrapper?.parentElement;
-  if (!wrapper || !outer) {
-    return;
-  }
-  rowGrid.dataset.smGrid = "1";
-  const cs = getComputedStyle(rowGrid);
-  const template = cs.gridTemplateColumns;
-  const gap = cs.gap;
-  rowGrid.classList.add("sm-unext-contents");
-  wrapper.classList.add("sm-unext-contents");
-  if (!outer.dataset.smGridHost) {
-    outer.dataset.smGridHost = "1";
-    outer.style.display = "grid";
-    outer.style.gridTemplateColumns = template;
-    outer.style.gap = gap;
-  }
-  for (const child of outer.children) {
-    const el = child as HTMLElement;
-    // Anything that is not a card cell (sentinels, headers) spans full width.
-    if (!el.dataset.smGrid && el !== rowGrid && !el.classList.contains("sm-unext-span")) {
-      el.classList.add("sm-unext-span");
-    }
-  }
-}
+  let open = true;
+  let shown = 0;
+  let scanned = 0;
+  void scanCategory(
+    categoryCode,
+    (titles) => {
+      scanned += titles.length;
+      for (const t of titles) {
+        if (!t.hasSubtitleTrack) {
+          continue;
+        }
+        const card = subtitleCard(t);
+        if (card) {
+          grid.appendChild(card);
+          shown += 1;
+        }
+      }
+      countEl.textContent = `${shown} titles`;
+      statusEl.textContent = `Scanned ${scanned}…`;
+    },
+    () => open,
+  )
+    .then(() => {
+      if (open) {
+        statusEl.textContent = shown === 0 ? "No subtitle titles found." : "";
+      }
+    })
+    .catch((error: unknown) => {
+      statusEl.textContent = `Error: ${error instanceof Error ? error.message : String(error)}`;
+    });
 
-function cardCell(card: HTMLAnchorElement): HTMLElement {
-  const parent = card.parentElement;
-  return parent && parent.children.length === 1 ? parent : card;
-}
-
-function setCellHidden(cell: HTMLElement, hide: boolean): void {
-  if (cell.classList.contains("sm-unext-hidden") !== hide) {
-    cell.classList.toggle("sm-unext-hidden", hide);
-  }
-}
-
-// Hide cards whose flag is false; unknown SIDs (page not fetched yet) stay
-// visible until the incremental scan covers them.
-function passCards(store: FlagStore, active: boolean): void {
-  for (const card of document.querySelectorAll<HTMLAnchorElement>(
-    'a[href*="/title/SID"], a[href*="/play/SID"]',
-  )) {
-    const sid = card.href.match(SID_IN_HREF)?.[1];
-    if (!sid) {
-      continue;
+  // A second click on the chip while open closes everything.
+  const observer = new MutationObserver(() => {
+    if (!overlay.classList.contains("sm-open")) {
+      open = false;
+      observer.disconnect();
     }
-    const cell = cardCell(card);
-    const parent = cell.parentElement;
-    if (parent && getComputedStyle(parent).display === "grid" && !parent.dataset.smGridHost) {
-      normalizeGrid(parent);
-    }
-    setCellHidden(cell, active && store.flags.get(sid) === false);
-  }
+  });
+  observer.observe(overlay, { attributes: true, attributeFilter: ["class"] });
 }
 
 function mountSubtitleFilter(): void {
@@ -634,69 +685,36 @@ function mountSubtitleFilter(): void {
     chip.id = "sm-unext-sub-chip";
     chip.textContent = "字幕あり";
     chip.removeAttribute("data-testid");
-    chip.style.backgroundColor = "transparent";
     tab.after(chip);
 
-    const store = new FlagStore(categoryCode);
-    let active = false;
-    let loopRunning = false;
-
-    const paintChip = () => {
-      chip.style.backgroundColor = active ? "rgba(255,255,255,.3)" : "transparent";
-      chip.classList.toggle("sm-busy", store.scanning);
-    };
-
-    // Keep pace with scrolling: fetch only the pages the site itself has
-    // requested so far, a few at a time, and re-apply after each batch.
-    const pump = async () => {
-      if (loopRunning) {
+    let syncAttached = false;
+    const attachSync = () => {
+      if (syncAttached) {
         return;
       }
-      loopRunning = true;
-      try {
-        while (active && store.fetchedPages < observedCategoryPages()) {
-          await store.ensurePages();
-          passCards(store, true);
-        }
-      } catch {
-        // transient API hiccup — the next scroll mutation retries via pump
-      } finally {
-        loopRunning = false;
-        paintChip();
-      }
-    };
-
-    // Virtualised list: nodes are recycled as the user scrolls. A debounced
-    // diff pass (no-op when nothing changed) keeps state correct cheaply.
-    let debounce: ReturnType<typeof setTimeout> | null = null;
-    const schedulePass = () => {
-      if (!active || debounce) {
+      const overlay = document.getElementById("sm-unext-overlay");
+      if (!overlay) {
         return;
       }
-      debounce = setTimeout(() => {
-        debounce = null;
-        passCards(store, true);
-        void pump();
-      }, 250);
+      syncAttached = true;
+      // Keep the chip highlight in sync with the overlay's open state.
+      new MutationObserver(() => {
+        if (!overlay.classList.contains("sm-open")) {
+          chip.style.backgroundColor = "";
+        }
+      }).observe(overlay, { attributes: true, attributeFilter: ["class"] });
     };
-    new MutationObserver(schedulePass).observe(document.body, { childList: true, subtree: true });
 
-    chip.addEventListener("click", async () => {
-      active = !active;
-      paintChip();
-      if (active) {
-        try {
-          await store.ensurePages();
-        } catch {
-          // transient API hiccup — pump() retries on the next scroll
-        }
-        passCards(store, true);
-        void pump();
-      } else {
-        for (const el of document.querySelectorAll(".sm-unext-hidden")) {
-          el.classList.remove("sm-unext-hidden");
-        }
+    chip.addEventListener("click", () => {
+      const overlay = document.getElementById("sm-unext-overlay");
+      if (overlay?.classList.contains("sm-open")) {
+        overlay.classList.remove("sm-open");
+        chip.style.backgroundColor = "";
+        return;
       }
+      chip.style.backgroundColor = "rgba(255,255,255,.3)";
+      openSubtitleDialog(categoryCode);
+      attachSync();
     });
     return true;
   };
